@@ -5,7 +5,7 @@ import sqlite3
 import re
 from flask import Flask, request
 from telegram import (
-    Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
+    Update, InlineKeyboardButton, InlineKeyboardMarkup
 )
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
@@ -24,10 +24,10 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────
 # CONFIG
 # ─────────────────────────────────────────────
-TOKEN        = os.getenv("BOT_TOKEN")
-WEBHOOK_URL  = os.getenv("WEBHOOK_URL")   # e.g. https://yourapp.onrender.com
+TOKEN          = os.getenv("BOT_TOKEN")
+WEBHOOK_URL    = os.getenv("WEBHOOK_URL")  # e.g. https://yourapp.onrender.com
 ADMIN_USERNAME = "BlockSavvyMx"
-DB_PATH      = "/tmp/users.db"
+DB_PATH        = "/tmp/users.db"
 
 # ─────────────────────────────────────────────
 # CONVERSATION STATES
@@ -120,13 +120,20 @@ def not_approved_reply():
         "Please click *🔑 Request Admin Access* first."
     )
 
+def _extract_username(link: str):
+    match = re.search(r"t\.me/([a-zA-Z0-9_]+)", link)
+    if match:
+        return match.group(1)
+    if link.startswith("@"):
+        return link[1:]
+    return None
+
 # ─────────────────────────────────────────────
 # /START HANDLER
 # ─────────────────────────────────────────────
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     upsert_user(user.id, user.username, user.first_name)
-
     welcome = (
         "👋 *Welcome to AdApprovalPilot AI!*\n\n"
         "I help you fix Telegram Ads issues such as:\n"
@@ -158,10 +165,8 @@ async def req_access(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ Your access request was denied.", reply_markup=main_menu_keyboard())
         return
 
-    # Save / refresh as pending
     upsert_user(user.id, user.username, user.first_name, "pending")
 
-    # Notify admin
     admin_msg = (
         f"🔔 *New Access Request*\n\n"
         f"👤 Name: {user.first_name}\n"
@@ -174,7 +179,6 @@ async def req_access(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]])
 
     try:
-        # Send to admin by username
         await context.bot.send_message(
             chat_id=f"@{ADMIN_USERNAME}",
             text=admin_msg,
@@ -201,12 +205,11 @@ async def admin_decision(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    # Only admin can use these buttons
     if query.from_user.username != ADMIN_USERNAME:
         await query.answer("⛔ You are not authorised.", show_alert=True)
         return
 
-    data = query.data  # accept_<user_id> or deny_<user_id>
+    data = query.data
     action, target_id = data.split("_", 1)
     target_id = int(target_id)
 
@@ -228,10 +231,9 @@ async def admin_decision(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 # ─────────────────────────────────────────────
-# ACCESS GATE for feature buttons
+# ACCESS GATE
 # ─────────────────────────────────────────────
 async def gate_check(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    """Returns True if user is approved, otherwise sends a warning and returns False."""
     query = update.callback_query
     if not is_approved(query.from_user.id):
         await query.answer("🔒 Request access first!", show_alert=True)
@@ -260,11 +262,9 @@ async def channel_index_start(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def channel_index_analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
     link = update.message.text.strip()
     username = _extract_username(link)
-
     if not username:
         await update.message.reply_text("⚠️ Invalid link format. Please send a valid t.me link.")
         return WAIT_CHANNEL_LINK
-
     report = (
         f"📊 *Channel Analysis Report*\n"
         f"🔗 Link: `{link}`\n\n"
@@ -299,11 +299,9 @@ async def group_index_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def group_index_analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
     link = update.message.text.strip()
     username = _extract_username(link)
-
     if not username:
         await update.message.reply_text("⚠️ Invalid link. Please send a valid t.me link.")
         return WAIT_GROUP_LINK
-
     report = (
         f"👥 *Group Analysis Report*\n"
         f"🔗 Link: `{link}`\n\n"
@@ -337,11 +335,9 @@ async def bot_index_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def bot_index_analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
     link = update.message.text.strip()
     username = _extract_username(link)
-
     if not username:
         await update.message.reply_text("⚠️ Invalid link. Please send a valid t.me link.")
         return WAIT_BOT_LINK
-
     report = (
         f"🤖 *Bot Analysis Report*\n"
         f"🔗 Link: `{link}`\n\n"
@@ -382,26 +378,21 @@ async def ad_text_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def ad_text_analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.lower()
     found = [w for w in SPAM_WORDS if w in text]
-
     risk = "🟢 Low" if not found else ("🟡 Medium" if len(found) <= 2 else "🔴 High")
     prob = 90 if not found else (65 if len(found) <= 2 else 30)
-
-    # Build improved version by removing risky phrases
     improved = update.message.text
     for w in found:
         improved = re.sub(re.escape(w), "[REMOVED]", improved, flags=re.IGNORECASE)
-
     report = (
         f"✍️ *Ad Text Analysis*\n\n"
         f"*Risk Level*: {risk}\n"
         f"*Approval Probability*: ~{prob}%\n\n"
     )
     if found:
-        report += f"❌ *Risky phrases detected*:\n" + "\n".join(f"  • `{w}`" for w in found) + "\n\n"
+        report += "❌ *Risky phrases detected*:\n" + "\n".join(f"  • `{w}`" for w in found) + "\n\n"
         report += f"✅ *Suggested version*:\n_{improved}_\n\n"
     else:
         report += "✅ No major spam phrases detected.\n\n"
-
     report += (
         "📋 *General Tips:*\n"
         "• Be specific about what your product does\n"
@@ -432,11 +423,8 @@ async def ad_budget_analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except ValueError:
         await update.message.reply_text("⚠️ Please enter a valid number. Example: `50`", parse_mode="Markdown")
         return WAIT_BUDGET
-
-    daily    = round(budget / 7, 2)
-    duration = 7 if budget <= 50 else (14 if budget <= 200 else 30)
+    duration  = 7 if budget <= 50 else (14 if budget <= 200 else 30)
     daily_opt = round(budget / duration, 2)
-
     report = (
         f"💰 *Budget Optimization Report*\n\n"
         f"💵 *Total Budget*: ${budget:.2f}\n"
@@ -458,14 +446,14 @@ async def ad_budget_analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # CPM PREDICTOR
 # ─────────────────────────────────────────────
 CPM_TABLE = {
-    "crypto":     (1.5, 3.5, "High",   "Tier 1 audiences drive up cost — test Tier 2 (IN, NG, BR)"),
-    "finance":    (1.2, 3.0, "High",   "Highly competitive — use narrow interest targeting"),
-    "tech":       (0.8, 2.0, "Medium", "Good volume — mix Tier 1 and Tier 2 for balance"),
-    "education":  (0.5, 1.2, "Low",    "Low CPM niche — great for tight budgets"),
-    "gaming":     (0.6, 1.5, "Low",    "Younger audience — works well with interactive creatives"),
-    "health":     (0.9, 2.2, "Medium", "Policy-sensitive — ensure ad copy is compliant"),
-    "ecommerce":  (0.7, 1.8, "Medium", "Retargeting works best — link to channel, not website"),
-    "news":       (0.4, 1.0, "Low",    "Very broad — narrow by language for better CPM"),
+    "crypto":    (1.5, 3.5, "High",   "Tier 1 audiences drive up cost — test Tier 2 (IN, NG, BR)"),
+    "finance":   (1.2, 3.0, "High",   "Highly competitive — use narrow interest targeting"),
+    "tech":      (0.8, 2.0, "Medium", "Good volume — mix Tier 1 and Tier 2 for balance"),
+    "education": (0.5, 1.2, "Low",    "Low CPM niche — great for tight budgets"),
+    "gaming":    (0.6, 1.5, "Low",    "Younger audience — works well with interactive creatives"),
+    "health":    (0.9, 2.2, "Medium", "Policy-sensitive — ensure ad copy is compliant"),
+    "ecommerce": (0.7, 1.8, "Medium", "Retargeting works best — link to channel, not website"),
+    "news":      (0.4, 1.0, "Low",    "Very broad — narrow by language for better CPM"),
 }
 
 async def ad_cpm_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -485,16 +473,13 @@ async def ad_cpm_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def ad_cpm_analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.lower()
     matched = next((k for k in CPM_TABLE if k in text), None)
-
     if matched:
         lo, hi, risk, tip = CPM_TABLE[matched]
         niche_label = matched.capitalize()
     else:
         lo, hi, risk, tip = 0.6, 1.8, "Medium", "Define your niche more precisely for better targeting"
         niche_label = "General"
-
     risk_emoji = {"Low": "🟢", "Medium": "🟡", "High": "🔴"}.get(risk, "🟡")
-
     report = (
         f"📉 *CPM Prediction Report*\n\n"
         f"🎯 *Niche*: {niche_label}\n"
@@ -511,36 +496,23 @@ async def ad_cpm_analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 # ─────────────────────────────────────────────
-# CANCEL (exits any conversation)
+# CANCEL
 # ─────────────────────────────────────────────
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❌ Cancelled. Back to main menu.", reply_markup=main_menu_keyboard())
     return ConversationHandler.END
 
 # ─────────────────────────────────────────────
-# UTILITY
-# ─────────────────────────────────────────────
-def _extract_username(link: str) -> str | None:
-    """Extract @username from t.me/username or @username strings."""
-    match = re.search(r"t\.me/([a-zA-Z0-9_]+)", link)
-    if match:
-        return match.group(1)
-    if link.startswith("@"):
-        return link[1:]
-    return None
-
-# ─────────────────────────────────────────────
-# FLASK APP & WEBHOOK
+# FLASK APP
 # ─────────────────────────────────────────────
 flask_app = Flask(__name__)
-
 ptb_app = Application.builder().token(TOKEN).build()
 
+# ✅ FIXED: use asyncio.run() instead of get_event_loop()
 @flask_app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), ptb_app.bot)
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(ptb_app.process_update(update))
+    asyncio.run(ptb_app.process_update(update))
     return "OK", 200
 
 @flask_app.route("/", methods=["GET"])
@@ -548,58 +520,48 @@ def index():
     return "AdApprovalPilot AI is running ✅", 200
 
 # ─────────────────────────────────────────────
-# REGISTER ALL HANDLERS
+# REGISTER HANDLERS
 # ─────────────────────────────────────────────
 def register_handlers():
-    # /start
     ptb_app.add_handler(CommandHandler("start", start))
-
-    # Access request
     ptb_app.add_handler(CallbackQueryHandler(req_access, pattern="^req_access$"))
-
-    # Admin decisions
     ptb_app.add_handler(CallbackQueryHandler(admin_decision, pattern="^(accept|deny)_\\d+$"))
 
-    # Channel Index conversation
     ptb_app.add_handler(ConversationHandler(
         entry_points=[CallbackQueryHandler(channel_index_start, pattern="^channel_index$")],
         states={WAIT_CHANNEL_LINK: [MessageHandler(filters.TEXT & ~filters.COMMAND, channel_index_analyze)]},
         fallbacks=[CommandHandler("cancel", cancel)],
+        per_message=False,
     ))
-
-    # Group Index conversation
     ptb_app.add_handler(ConversationHandler(
         entry_points=[CallbackQueryHandler(group_index_start, pattern="^group_index$")],
         states={WAIT_GROUP_LINK: [MessageHandler(filters.TEXT & ~filters.COMMAND, group_index_analyze)]},
         fallbacks=[CommandHandler("cancel", cancel)],
+        per_message=False,
     ))
-
-    # Bot Index conversation
     ptb_app.add_handler(ConversationHandler(
         entry_points=[CallbackQueryHandler(bot_index_start, pattern="^bot_index$")],
         states={WAIT_BOT_LINK: [MessageHandler(filters.TEXT & ~filters.COMMAND, bot_index_analyze)]},
         fallbacks=[CommandHandler("cancel", cancel)],
+        per_message=False,
     ))
-
-    # Ad Text conversation
     ptb_app.add_handler(ConversationHandler(
         entry_points=[CallbackQueryHandler(ad_text_start, pattern="^ad_text$")],
         states={WAIT_AD_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, ad_text_analyze)]},
         fallbacks=[CommandHandler("cancel", cancel)],
+        per_message=False,
     ))
-
-    # Budget conversation
     ptb_app.add_handler(ConversationHandler(
         entry_points=[CallbackQueryHandler(ad_budget_start, pattern="^ad_budget$")],
         states={WAIT_BUDGET: [MessageHandler(filters.TEXT & ~filters.COMMAND, ad_budget_analyze)]},
         fallbacks=[CommandHandler("cancel", cancel)],
+        per_message=False,
     ))
-
-    # CPM conversation
     ptb_app.add_handler(ConversationHandler(
         entry_points=[CallbackQueryHandler(ad_cpm_start, pattern="^ad_cpm$")],
         states={WAIT_CPM_NICHE: [MessageHandler(filters.TEXT & ~filters.COMMAND, ad_cpm_analyze)]},
         fallbacks=[CommandHandler("cancel", cancel)],
+        per_message=False,
     ))
 
 # ─────────────────────────────────────────────
