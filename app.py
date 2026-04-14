@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 TOKEN          = os.getenv("BOT_TOKEN")
 WEBHOOK_URL    = os.getenv("WEBHOOK_URL")  # e.g. https://yourapp.onrender.com
 ADMIN_USERNAME = "BlockSavvyMx"
+ADMIN_ID       = 6941833127  # Telegram user ID of admin
 DB_PATH        = "/tmp/users.db"
 
 # ─────────────────────────────────────────────
@@ -133,7 +134,13 @@ def _extract_username(link: str):
 # ─────────────────────────────────────────────
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    upsert_user(user.id, user.username, user.first_name)
+
+    # Admin is always auto-approved
+    if user.id == ADMIN_ID:
+        upsert_user(user.id, user.username, user.first_name, "approved")
+    else:
+        upsert_user(user.id, user.username, user.first_name)
+
     welcome = (
         "👋 *Welcome to AdApprovalPilot AI!*\n\n"
         "I help you fix Telegram Ads issues such as:\n"
@@ -157,16 +164,32 @@ async def req_access(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     user = query.from_user
 
+    # Admin doesn't need to request access
+    if user.id == ADMIN_ID:
+        await query.edit_message_text(
+            "👑 You are the admin — you already have full access!",
+            reply_markup=main_menu_keyboard()
+        )
+        return
+
     status = get_user_status(user.id)
     if status == "approved":
-        await query.edit_message_text("✅ You already have access!", reply_markup=main_menu_keyboard())
+        await query.edit_message_text(
+            "✅ You already have access!",
+            reply_markup=main_menu_keyboard()
+        )
         return
     if status == "denied":
-        await query.edit_message_text("❌ Your access request was denied.", reply_markup=main_menu_keyboard())
+        await query.edit_message_text(
+            "❌ Your access request was denied. Contact @BlockSavvyMx for help.",
+            reply_markup=main_menu_keyboard()
+        )
         return
 
+    # Save as pending
     upsert_user(user.id, user.username, user.first_name, "pending")
 
+    # Build admin notification
     admin_msg = (
         f"🔔 *New Access Request*\n\n"
         f"👤 Name: {user.first_name}\n"
@@ -179,14 +202,16 @@ async def req_access(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]])
 
     try:
+        # ✅ Send directly to admin using numeric ID — reliable, no privacy issues
         await context.bot.send_message(
-            chat_id=f"@{ADMIN_USERNAME}",
+            chat_id=ADMIN_ID,
             text=admin_msg,
             parse_mode="Markdown",
             reply_markup=admin_keyboard
         )
         await query.edit_message_text(
-            "⏳ *Access request sent!*\n\nPlease wait for admin approval. "
+            "⏳ *Access request sent!*\n\n"
+            "Please wait for admin approval. "
             "You'll be notified once a decision is made.",
             parse_mode="Markdown",
             reply_markup=main_menu_keyboard()
@@ -205,7 +230,8 @@ async def admin_decision(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    if query.from_user.username != ADMIN_USERNAME:
+    # Only the admin can press these buttons
+    if query.from_user.id != ADMIN_ID:
         await query.answer("⛔ You are not authorised.", show_alert=True)
         return
 
@@ -215,18 +241,32 @@ async def admin_decision(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if action == "accept":
         set_user_status(target_id, "approved")
-        await query.edit_message_text(f"✅ User `{target_id}` has been *approved*.", parse_mode="Markdown")
+        await query.edit_message_text(
+            f"✅ User `{target_id}` has been *approved*.",
+            parse_mode="Markdown"
+        )
         await context.bot.send_message(
             chat_id=target_id,
-            text="✅ *Access Granted!*\n\nWelcome aboard! You now have full access to AdApprovalPilot AI.\n\nUse /start to open the menu.",
+            text=(
+                "✅ *Access Granted!*\n\n"
+                "Welcome aboard! You now have full access to AdApprovalPilot AI.\n\n"
+                "Use /start to open the menu."
+            ),
             parse_mode="Markdown"
         )
     else:
         set_user_status(target_id, "denied")
-        await query.edit_message_text(f"❌ User `{target_id}` has been *denied*.", parse_mode="Markdown")
+        await query.edit_message_text(
+            f"❌ User `{target_id}` has been *denied*.",
+            parse_mode="Markdown"
+        )
         await context.bot.send_message(
             chat_id=target_id,
-            text="❌ *Access Denied*\n\nYour request was not approved. Contact @BlockSavvyMx if you think this is a mistake.",
+            text=(
+                "❌ *Access Denied*\n\n"
+                "Your request was not approved. "
+                "Contact @BlockSavvyMx if you think this is a mistake."
+            ),
             parse_mode="Markdown"
         )
 
@@ -235,6 +275,9 @@ async def admin_decision(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ─────────────────────────────────────────────
 async def gate_check(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     query = update.callback_query
+    # Admin always passes the gate
+    if query.from_user.id == ADMIN_ID:
+        return True
     if not is_approved(query.from_user.id):
         await query.answer("🔒 Request access first!", show_alert=True)
         await query.edit_message_text(
@@ -508,7 +551,6 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 flask_app = Flask(__name__)
 ptb_app = Application.builder().token(TOKEN).build()
 
-# ✅ FIXED: use asyncio.run() instead of get_event_loop()
 @flask_app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), ptb_app.bot)
