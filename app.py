@@ -1,11 +1,16 @@
+"""
+AdApprovalPilot AI — Production Build
+Deep Telegram Ads Compliance Engine
+"""
 import os
 import logging
 import asyncio
 import sqlite3
 import re
+import json
 from flask import Flask, request
 from telegram import (
-    Update, InlineKeyboardButton, InlineKeyboardMarkup, Chat
+    Update, InlineKeyboardButton, InlineKeyboardMarkup
 )
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
@@ -53,27 +58,37 @@ TON_PER_USD    = 0.67
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
+    # Core users table
     c.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id       INTEGER PRIMARY KEY,
             username      TEXT,
             first_name    TEXT,
             access_status TEXT DEFAULT 'pending',
-            used_link     TEXT DEFAULT NULL,
             joined_chat   TEXT DEFAULT NULL
         )
     """)
-    for col, defn in [
-        ("used_link",   "TEXT DEFAULT NULL"),
-        ("joined_chat", "TEXT DEFAULT NULL"),
-    ]:
+    # Multi-link approvals table
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS link_approvals (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER NOT NULL,
+            link        TEXT NOT NULL,
+            status      TEXT DEFAULT 'pending',
+            UNIQUE(user_id, link)
+        )
+    """)
+    # Migrate old schema
+    for col, defn in [("joined_chat", "TEXT DEFAULT NULL")]:
         try:
             c.execute(f"ALTER TABLE users ADD COLUMN {col} {defn}")
         except Exception:
             pass
+    # Remove legacy used_link column usage gracefully
     conn.commit()
     conn.close()
 
+# ── User helpers ──
 def upsert_user(user_id, username, first_name, status="pending"):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -82,11 +97,7 @@ def upsert_user(user_id, username, first_name, status="pending"):
         VALUES (?, ?, ?, ?)
         ON CONFLICT(user_id) DO UPDATE SET
             username=excluded.username,
-            first_name=excluded.first_name,
-            access_status=COALESCE(
-                CASE WHEN access_status IN ('approved','disabled') THEN access_status END,
-                excluded.access_status
-            )
+            first_name=excluded.first_name
     """, (user_id, username or "", first_name or "", status))
     conn.commit()
     conn.close()
@@ -106,20 +117,13 @@ def get_user_status(user_id):
     conn.close()
     return row[0] if row else None
 
-def get_used_link(user_id):
+def get_user_info(user_id):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT used_link FROM users WHERE user_id=?", (user_id,))
+    c.execute("SELECT username, first_name, access_status FROM users WHERE user_id=?", (user_id,))
     row = c.fetchone()
     conn.close()
-    return row[0] if row else None
-
-def set_used_link(user_id, link):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("UPDATE users SET used_link=? WHERE user_id=?", (link, user_id))
-    conn.commit()
-    conn.close()
+    return row
 
 def set_joined_chat(user_id, chat_id):
     conn = sqlite3.connect(DB_PATH)
@@ -143,12 +147,57 @@ def clear_joined_chat(user_id):
     conn.commit()
     conn.close()
 
+# ── Multi-link approval helpers ──
+def get_link_status(user_id, link):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT status FROM link_approvals WHERE user_id=? AND link=?", (user_id, link))
+    row = c.fetchone()
+    conn.close()
+    return row[0] if row else None
+
+def upsert_link_request(user_id, link, status="pending"):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        INSERT INTO link_approvals (user_id, link, status)
+        VALUES (?, ?, ?)
+        ON CONFLICT(user_id, link) DO UPDATE SET status=excluded.status
+    """, (user_id, link, status))
+    conn.commit()
+    conn.close()
+
+def set_link_status(user_id, link, status):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        "UPDATE link_approvals SET status=? WHERE user_id=? AND link=?",
+        (status, user_id, link)
+    )
+    conn.commit()
+    conn.close()
+
+def get_approved_links(user_id):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT link FROM link_approvals WHERE user_id=? AND status='approved'", (user_id,))
+    rows = c.fetchall()
+    conn.close()
+    return [r[0] for r in rows]
+
+def reset_user_links(user_id):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("DELETE FROM link_approvals WHERE user_id=?", (user_id,))
+    conn.commit()
+    conn.close()
+
 # ─────────────────────────────────────────────
-# HELPERS
+# KEYBOARDS
 # ─────────────────────────────────────────────
 def main_menu_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔑 Request Admin Access",            callback_data="req_access")],
+        [InlineKeyboardButton("🔑 Request Admin Access", callback_data="req_access")],
         [
             InlineKeyboardButton("📊 Channel Index", callback_data="channel_index"),
             InlineKeyboardButton("👥 Group Index",   callback_data="group_index"),
@@ -164,6 +213,32 @@ def main_menu_keyboard():
         [InlineKeyboardButton("🔧 Allow Bot to Fix My Channel/Group", callback_data="bot_join")],
     ])
 
+def admin_user_keyboard(user_id: int) -> InlineKeyboardMarkup:
+    """Persistent admin control panel for a specific user."""
+    uid = str(user_id)
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ Approve",        callback_data=f"accept_{uid}"),
+            InlineKeyboardButton("❌ Deny",           callback_data=f"deny_{uid}"),
+        ],
+        [
+            InlineKeyboardButton("🚫 Disable",        callback_data=f"disable_{uid}"),
+            InlineKeyboardButton("🔁 Reset Access",   callback_data=f"reset_{uid}"),
+        ],
+        [InlineKeyboardButton("🗑 Remove From Channels", callback_data=f"removeassets_{uid}")],
+    ])
+
+def admin_link_keyboard(user_id: int, link: str) -> InlineKeyboardMarkup:
+    """Keyboard for approving/denying a specific link request."""
+    safe_link = link.replace("https://t.me/", "").replace("/", "")[:50]
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ Approve Link", callback_data=f"approvelink_{user_id}_{safe_link}"),
+        InlineKeyboardButton("❌ Deny Link",    callback_data=f"denylink_{user_id}_{safe_link}"),
+    ]])
+
+# ─────────────────────────────────────────────
+# HELPERS
+# ─────────────────────────────────────────────
 def _extract_username(link: str):
     link = link.strip()
     match = re.search(r"t\.me/([a-zA-Z0-9_]+)", link)
@@ -176,197 +251,221 @@ def _extract_username(link: str):
 def usd_to_ton(usd: float) -> float:
     return round(usd * TON_PER_USD, 2)
 
-def is_approved(user_id):
-    return get_user_status(user_id) == "approved"
-
-def is_disabled(user_id):
-    return get_user_status(user_id) == "disabled"
-
 # ─────────────────────────────────────────────
-# ANALYSIS CONSTANTS
+# COMPLIANCE DETECTION ENGINE
 # ─────────────────────────────────────────────
-RISKY_KEYWORDS = [
-    "earn fast", "make money", "get rich", "guaranteed", "guarantee",
-    "100%", "no risk", "risk free", "free money", "instant profit",
-    "passive income", "work from home", "double your", "click now",
-    "act now", "limited time", "winner", "prize", "cash",
-    "investment returns", "financial freedom", "secret method",
-    "hack", "exploit", "unlimited", "forex", "pump", "signal",
-    "crypto signal", "join now", "don't miss", "airdrop", "get paid",
-    "referral bonus", "mlm", "ponzi", "easy money", "no experience",
-    "fast cash", "100x", "moon", "lambo", "free crypto",
-]
 
-SUSPICIOUS_LINK_PATTERNS = [
+# Category-based violation detection
+VIOLATION_CATEGORIES = {
+    "gambling": [
+        "casino", "gambling", "bet ", "betting", "jackpot", "poker",
+        "roulette", "slots", "bookie", "odds", "wager", "stake",
+    ],
+    "adult": [
+        "xxx", "adult content", "18+", "nsfw", "explicit", "nude",
+        "onlyfans", "escort", "dating",
+    ],
+    "get_rich_quick": [
+        "earn fast", "get rich", "make money fast", "instant profit",
+        "easy money", "fast cash", "make $", "earn $", "passive income",
+        "financial freedom", "quit your job", "no experience needed",
+    ],
+    "financial_promises": [
+        "guaranteed returns", "guaranteed profit", "100% profit",
+        "guaranteed income", "risk free investment", "no risk",
+        "double your money", "triple your investment", "100x",
+        "guaranteed roi", "fixed returns",
+    ],
+    "crypto_hype": [
+        "moon", "lambo", "to the moon", "next bitcoin", "100x coin",
+        "pump", "get in early", "presale", "airdrop bonus",
+        "free crypto", "crypto signal", "forex signal", "vip signal",
+        "signal group", "next 100x",
+    ],
+    "scam_signals": [
+        "ponzi", "mlm", "referral bonus", "recruit members",
+        "join my team", "unlimited earning", "work from home earn",
+        "secret method", "hack the market", "insider tip",
+    ],
+    "affiliate_abuse": [
+        "click my link", "use my code", "referral link",
+        "affiliate", "commission", "earn per click",
+    ],
+    "spam_structure": [
+        "join now!!!",  "limited time offer!!", "act now!!",
+        "don't miss out!!", "last chance!!",
+    ],
+}
+
+SUSPICIOUS_LINKS = [
     r"bit\.ly", r"tinyurl", r"shorte\.st", r"cutt\.ly",
-    r"gg\.gg", r"t\.cn", r"rebrand\.ly", r"is\.gd",
+    r"gg\.gg", r"t\.cn", r"rebrand\.ly", r"is\.gd", r"ow\.ly",
 ]
 
 REWRITE_MAP = {
-    "earn fast":      "grow your knowledge quickly",
-    "make money":     "build financial value",
-    "get rich":       "achieve your financial goals",
-    "guaranteed":     "proven",
-    "guarantee":      "trusted",
-    "100%":           "highly effective",
-    "no risk":        "beginner-friendly",
-    "risk free":      "low barrier to entry",
-    "free money":     "free resources",
-    "instant profit": "measurable results",
-    "passive income": "consistent returns",
-    "work from home": "remote opportunities",
-    "double your":    "grow your",
-    "click now":      "learn more",
-    "act now":        "get started today",
-    "limited time":   "exclusive",
-    "winner":         "top performer",
-    "prize":          "reward",
-    "cash":           "value",
-    "join now":       "join us",
-    "don't miss":     "explore",
-    "airdrop":        "token distribution",
-    "get paid":       "earn value",
-    "fast cash":      "quick results",
-    "easy money":     "accessible opportunity",
-    "moon":           "growth potential",
-    "pump":           "market movement",
-    "signal":         "market insight",
+    "earn fast":           "grow your expertise quickly",
+    "make money":          "build financial value",
+    "get rich":            "achieve your goals",
+    "guaranteed":          "proven",
+    "guarantee":           "trusted",
+    "100%":                "highly effective",
+    "no risk":             "beginner-friendly",
+    "risk free":           "accessible",
+    "free money":          "free resources",
+    "instant profit":      "measurable results",
+    "passive income":      "consistent returns",
+    "work from home":      "remote opportunities",
+    "double your":         "grow your",
+    "click now":           "learn more",
+    "act now":             "get started",
+    "limited time":        "exclusive",
+    "winner":              "top performer",
+    "prize":               "reward",
+    "join now":            "join us",
+    "don't miss":          "explore",
+    "airdrop":             "token distribution",
+    "get paid":            "earn value",
+    "fast cash":           "quick results",
+    "easy money":          "accessible opportunity",
+    "moon":                "growth potential",
+    "pump":                "market movement",
+    "signal":              "market insight",
+    "crypto signal":       "market analysis",
+    "forex signal":        "currency analysis",
+    "passive income":      "recurring value",
+    "financial freedom":   "financial independence",
 }
 
-# ─────────────────────────────────────────────
-# REAL TELEGRAM DATA FETCHER
-# ─────────────────────────────────────────────
-async def fetch_chat_data(bot, username: str) -> dict:
+
+def detect_violations(text: str) -> dict:
     """
-    Fetch REAL data from Telegram API.
-    Returns dict with available fields or error info.
-    NEVER generates or assumes data.
+    Scan text for policy violations by category.
+    Returns dict of {category: [found_phrases]}
     """
-    result = {
-        "success":          False,
-        "error":            None,
-        "name":             None,
-        "description":      None,
-        "username":         username,
-        "member_count":     None,
-        "chat_type":        None,
-        "has_description":  False,
-        "has_photo":        False,
-    }
-    try:
-        chat = await bot.get_chat(f"@{username}")
-        result["success"]         = True
-        result["name"]            = chat.title or chat.full_name or username
-        result["description"]     = chat.description or chat.bio or None
-        result["has_description"] = bool(chat.description or chat.bio)
-        result["has_photo"]       = bool(chat.photo)
-        result["chat_type"]       = chat.type
-
-        # Member count (works for supergroups and channels)
-        try:
-            count = await bot.get_chat_member_count(f"@{username}")
-            result["member_count"] = count
-        except Exception:
-            result["member_count"] = None
-
-    except Forbidden:
-        result["error"] = "private_or_restricted"
-    except BadRequest as e:
-        result["error"] = f"bad_request: {e}"
-    except TelegramError as e:
-        result["error"] = str(e)
-    except Exception as e:
-        result["error"] = str(e)
-
-    return result
-
-
-def analyze_post_text(text: str, index: int) -> dict | None:
-    """
-    Analyze a REAL post text for policy issues.
-    Returns None if clean.
-    """
-    if not text or not text.strip():
-        return None
-
-    t      = text.lower()
-    issues = []
-
-    found_kw = [kw for kw in RISKY_KEYWORDS if kw in t]
-    if found_kw:
-        issues.append(f"❌ Risky phrases: `{'`, `'.join(found_kw)}`")
-
-    for pat in SUSPICIOUS_LINK_PATTERNS:
-        if re.search(pat, t):
-            issues.append("⚠️ Contains shortened/suspicious URL — flagged by Telegram review system")
-            break
-
+    if not text:
+        return {}
+    t       = text.lower()
+    results = {}
+    for category, phrases in VIOLATION_CATEGORIES.items():
+        found = [p for p in phrases if p in t]
+        if found:
+            results[category] = found
+    # Suspicious links
+    found_links = [p for p in SUSPICIOUS_LINKS if re.search(p, t)]
+    if found_links:
+        results["suspicious_links"] = found_links
+    # Excessive caps
     caps_words = [w for w in text.split() if len(w) > 3 and w.isupper()]
     if len(caps_words) >= 3:
-        issues.append("⚠️ Excessive ALL-CAPS — signals low-quality promotional content")
+        results["excessive_caps"] = caps_words[:5]
+    return results
 
-    if text.count("!") >= 3:
-        issues.append("⚠️ Too many exclamation marks — triggers spam filters")
 
-    if not issues:
-        return None
-
-    return {
-        "index":   index,
-        "preview": text[:120] + ("..." if len(text) > 120 else ""),
-        "issues":  issues,
+def violation_explanation(category: str, phrases: list) -> str:
+    """Human-readable explanation for each violation category."""
+    explanations = {
+        "gambling": (
+            "Contains gambling/betting content. Telegram Ads strictly prohibits "
+            f"gambling promotions. Detected: `{'`, `'.join(phrases)}`"
+        ),
+        "adult": (
+            "Contains adult or sensitive content indicators. "
+            f"Detected: `{'`, `'.join(phrases)}`"
+        ),
+        "get_rich_quick": (
+            "Uses 'get rich quick' language which Telegram's review system "
+            f"flags as misleading. Detected: `{'`, `'.join(phrases)}`"
+        ),
+        "financial_promises": (
+            "Contains financial guarantees or unrealistic return promises. "
+            "This is a direct policy violation. "
+            f"Detected: `{'`, `'.join(phrases)}`"
+        ),
+        "crypto_hype": (
+            "Uses crypto hype language that triggers automatic policy flags. "
+            f"Detected: `{'`, `'.join(phrases)}`"
+        ),
+        "scam_signals": (
+            "Contains patterns associated with scam or MLM operations. "
+            f"Detected: `{'`, `'.join(phrases)}`"
+        ),
+        "affiliate_abuse": (
+            "Excessive affiliate or referral link promotion detected. "
+            "Telegram limits direct affiliate solicitation in ads. "
+            f"Detected: `{'`, `'.join(phrases)}`"
+        ),
+        "spam_structure": (
+            "Post structure resembles spam (excessive punctuation, urgency manipulation). "
+            f"Detected: `{'`, `'.join(phrases)}`"
+        ),
+        "suspicious_links": (
+            "Contains shortened or suspicious URLs which Telegram flags as spam vectors. "
+            f"Patterns: `{'`, `'.join(phrases)}`"
+        ),
+        "excessive_caps": (
+            "Excessive ALL-CAPS words signal low-quality promotional content. "
+            f"Words: `{'`, `'.join(phrases)}`"
+        ),
     }
+    return explanations.get(category, f"Policy violation in category `{category}`")
 
 
-def rewrite_content(text: str) -> str:
-    """Rewrite a post into a policy-compliant version."""
+def smart_recommendation(category: str) -> str:
+    """Generate targeted recommendation per violation type."""
+    recs = {
+        "gambling":           "Remove all gambling/betting content before running ads. Telegram does not allow gambling promotion.",
+        "adult":              "Remove adult content entirely. This is a hard policy block.",
+        "get_rich_quick":     "Replace motivational income language with specific, factual value statements.",
+        "financial_promises": "Remove all guaranteed returns or profit claims. Use 'potential' or 'possible' instead.",
+        "crypto_hype":        "Replace hype language with analytical, factual descriptions of your crypto content.",
+        "scam_signals":       "Restructure content to focus on education and value, not recruitment or referrals.",
+        "affiliate_abuse":    "Limit affiliate links to 1 per post. Add value content between promotions.",
+        "spam_structure":     "Remove excessive punctuation and urgency language. Use calm, professional tone.",
+        "suspicious_links":   "Replace shortened URLs with full, transparent links to build trust.",
+        "excessive_caps":     "Use sentence case throughout. Reserve caps for brand names only.",
+    }
+    return recs.get(category, "Review and update content to align with Telegram Ads policies.")
+
+
+def rewrite_text(text: str) -> str:
+    """Rewrite post text to be policy-compliant."""
     cleaned = text
-    for kw, safe in REWRITE_MAP.items():
-        cleaned = re.sub(re.escape(kw), safe, cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r'!{2,}', '!', cleaned)
+    for phrase, safe in REWRITE_MAP.items():
+        cleaned = re.sub(re.escape(phrase), safe, cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'!{2,}', '.', cleaned)
     cleaned = re.sub(r'\?{2,}', '?', cleaned)
-    return cleaned
+    def fix_caps(m):
+        w = m.group(0)
+        return w.capitalize() if len(w) > 3 else w
+    cleaned = re.sub(r'\b[A-Z]{4,}\b', fix_caps, cleaned)
+    return cleaned.strip()
 
 
 def analyze_profile_username(username: str, entity_type: str) -> dict:
-    """Analyze username patterns for policy issues."""
-    issues      = []
-    suggestions = []
-    score       = 100
+    """Analyze username patterns for profile-level issues."""
+    issues = []
+    score  = 100
 
     if len(username) < 5:
-        issues.append("❌ Username too short (<5 chars) — reduces trust score")
-        suggestions.append(f"Try `{username}_official` or `{username}_hub`")
-        score -= 20
-
+        issues.append(("username_length", "Username too short (<5 chars) — reduces trust score", 20))
     if username.isupper():
-        issues.append("❌ All-caps username appears spammy")
-        suggestions.append(f"Use mixed case: `{username.capitalize()}`")
-        score -= 15
-
+        issues.append(("username_caps", "All-caps username appears spammy to reviewers", 15))
     if "__" in username:
-        issues.append("⚠️ Double underscores signal low-quality account")
-        suggestions.append("Replace `__` with single `_` or remove")
-        score -= 10
-
+        issues.append(("double_underscore", "Double underscores signal low-quality account", 10))
     if re.search(r'\d{3,}$', username):
-        issues.append("⚠️ Trailing numbers suggest auto-generated account")
-        suggestions.append("Remove trailing numbers and use a meaningful suffix")
-        score -= 10
+        issues.append(("trailing_numbers", "Trailing numbers suggest auto-generated or spam account", 10))
 
-    for kw in ["free", "earn", "money", "profit", "win", "casino", "bet", "signal", "forex"]:
+    for kw in ["free", "earn", "money", "profit", "win", "casino", "bet", "signal", "forex", "pump"]:
         if kw in username.lower():
-            issues.append(f"❌ `{kw}` in username is a known Telegram Ads policy risk")
-            suggestions.append(f"Remove `{kw}` — use your niche name instead")
-            score -= 25
+            issues.append(("risky_keyword", f"`{kw}` in username is a direct Telegram Ads policy risk", 30))
             break
 
     if entity_type == "bot" and not username.lower().endswith("bot"):
-        issues.append("⚠️ Bot username should end with 'bot' per Telegram convention")
-        suggestions.append(f"Rename to `{username}Bot`")
-        score -= 10
+        issues.append(("bot_naming", "Bot username should end with 'bot' per Telegram convention", 10))
 
-    return {"issues": issues, "suggestions": suggestions, "score": max(0, score)}
+    for _, _, penalty in issues:
+        score -= penalty
+    return {"issues": issues, "score": max(0, score)}
 
 
 def generate_name_alternatives(username: str, entity_type: str) -> list:
@@ -381,26 +480,64 @@ def generate_name_alternatives(username: str, entity_type: str) -> list:
 
 def generate_ad_copies(username: str, entity_type: str, description: str = None) -> list:
     b    = username.replace("_", " ").title()
-    desc = description or ""
-
     if entity_type == "channel":
         return [
-            f"📢 *Copy 1 — Informational*\nStay informed with *{b}* — expert insights and curated content trusted by an engaged audience. ➡️ Explore now.",
-            f"📢 *Copy 2 — Community*\nLooking for reliable content in your niche? *{b}* delivers consistent, high-quality updates. ➡️ Subscribe.",
-            f"📢 *Copy 3 — Value*\n*{b}* shares practical knowledge with no fluff. Join today and level up your expertise. ➡️ Follow the channel.",
+            f"📢 *Copy 1 — Informational*\nStay informed with *{b}* — expert insights trusted by an engaged audience. ➡️ Explore now.",
+            f"📢 *Copy 2 — Community*\nReliable, high-quality content in your niche. *{b}* delivers consistently. ➡️ Subscribe.",
+            f"📢 *Copy 3 — Value*\n*{b}* shares practical knowledge with no fluff. Level up your expertise. ➡️ Follow.",
         ]
     elif entity_type == "group":
         return [
-            f"📢 *Copy 1 — Community*\nJoin *{b}* — where members share insights and grow together. ➡️ Join the conversation.",
+            f"📢 *Copy 1 — Community*\nJoin *{b}* — where members share insights and grow together. ➡️ Join now.",
             f"📢 *Copy 2 — Engagement*\nReal discussions. Expert opinions. *{b}* is built for serious learners. ➡️ Join today.",
-            f"📢 *Copy 3 — Trust*\n*{b}* is a moderated, professional space for your niche. Come and connect. ➡️ Join the group.",
+            f"📢 *Copy 3 — Trust*\n*{b}* is a moderated, professional space for your niche. ➡️ Connect.",
         ]
     else:
         return [
-            f"📢 *Copy 1 — Utility*\nAutomate and simplify with *{b}*. Smart tools right inside Telegram. ➡️ Start now.",
+            f"📢 *Copy 1 — Utility*\nAutomate and simplify with *{b}*. Smart tools inside Telegram. ➡️ Start now.",
             f"📢 *Copy 2 — Efficiency*\nSave time with *{b}*. Built for real users who want results. ➡️ Try it.",
-            f"📢 *Copy 3 — Trust*\nThousands use *{b}* daily. Reliable, fast, and easy to use. ➡️ Get started.",
+            f"📢 *Copy 3 — Trust*\nThousands use *{b}* daily. Reliable and easy to use. ➡️ Get started.",
         ]
+
+# ─────────────────────────────────────────────
+# REAL TELEGRAM DATA FETCHER
+# ─────────────────────────────────────────────
+async def fetch_chat_data(bot, username: str) -> dict:
+    """Fetch ONLY real data from Telegram API. Never generates fake data."""
+    result = {
+        "success":         False,
+        "error":           None,
+        "name":            None,
+        "description":     None,
+        "username":        username,
+        "member_count":    None,
+        "chat_type":       None,
+        "has_description": False,
+        "has_photo":       False,
+    }
+    try:
+        chat = await bot.get_chat(f"@{username}")
+        result.update({
+            "success":         True,
+            "name":            chat.title or chat.full_name or username,
+            "description":     chat.description or chat.bio or None,
+            "has_description": bool(chat.description or chat.bio),
+            "has_photo":       bool(chat.photo),
+            "chat_type":       chat.type,
+        })
+        try:
+            result["member_count"] = await bot.get_chat_member_count(f"@{username}")
+        except Exception:
+            pass
+    except Forbidden:
+        result["error"] = "private_or_restricted"
+    except BadRequest as e:
+        result["error"] = f"bad_request: {e}"
+    except TelegramError as e:
+        result["error"] = str(e)
+    except Exception as e:
+        result["error"] = str(e)
+    return result
 
 # ─────────────────────────────────────────────
 # GATE CHECKS
@@ -413,325 +550,296 @@ async def gate_check(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool
     status = get_user_status(user_id)
     if status == "disabled":
         await query.answer("🚫 Your access has been suspended.", show_alert=True)
-        await query.edit_message_text(
-            "🚫 *Access Suspended*\n\nContact @BlockSavvyMx to appeal.",
-            parse_mode="Markdown"
-        )
+        await query.edit_message_text("🚫 *Access Suspended.*\n\nContact @BlockSavvyMx to appeal.", parse_mode="Markdown")
         return False
     if status != "approved":
         await query.answer("🔒 Request access first!", show_alert=True)
         await query.edit_message_text(
-            "🔒 *Access Required*\n\nClick *🔑 Request Admin Access* first.",
-            parse_mode="Markdown",
-            reply_markup=main_menu_keyboard()
+            "🔒 *Access Required*\n\nClick *🔑 Request Admin Access* to get started.",
+            parse_mode="Markdown", reply_markup=main_menu_keyboard()
         )
         return False
     return True
 
 async def disabled_guard(update: Update) -> bool:
-    """Returns True (and warns) if user is disabled. Use in message handlers."""
     user_id = update.effective_user.id
     if user_id != ADMIN_ID and get_user_status(user_id) == "disabled":
-        await update.message.reply_text(
-            "🚫 Access has been suspended. Contact admin @BlockSavvyMx."
-        )
+        await update.message.reply_text("🚫 Access suspended. Contact admin @BlockSavvyMx.")
         return True
     return False
 
-async def link_limit_check(update: Update, link: str) -> bool:
+async def link_access_check(update: Update, context: ContextTypes.DEFAULT_TYPE, link: str) -> bool:
     """
-    Enforce one-link limit.
-    SAME link = allowed (re-analysis).
-    DIFFERENT link = blocked.
-    Admin exempt.
+    Multi-link approval:
+    - Admin: always allowed
+    - Approved link: allowed
+    - New link: request admin approval
     """
     user_id = update.effective_user.id
     if user_id == ADMIN_ID:
         return True
-    used = get_used_link(user_id)
-    if used and used != link:
+
+    link_status = get_link_status(user_id, link)
+
+    if link_status == "approved":
+        return True
+
+    if link_status == "pending":
         await update.message.reply_text(
-            "🚫 *One-Link Limit Reached*\n\n"
-            f"You have already used your free analysis on:\n`{used}`\n\n"
-            "You can re-analyze the same link anytime.\n"
-            "Contact @BlockSavvyMx to unlock a different link.",
-            parse_mode="Markdown",
-            reply_markup=main_menu_keyboard()
+            "⏳ *Approval Pending*\n\n"
+            f"Your request to analyse `{link}` is still awaiting admin approval.\n"
+            "Please wait for @BlockSavvyMx to approve it.",
+            parse_mode="Markdown", reply_markup=main_menu_keyboard()
         )
         return False
-    return True
+
+    if link_status == "denied":
+        await update.message.reply_text(
+            "❌ *Link Access Denied*\n\n"
+            f"Admin has denied analysis of `{link}`.\n"
+            "Contact @BlockSavvyMx if you believe this is a mistake.",
+            parse_mode="Markdown", reply_markup=main_menu_keyboard()
+        )
+        return False
+
+    # New link — request admin approval
+    upsert_link_request(user_id, link, "pending")
+    user_info = get_user_info(user_id)
+    uname     = user_info[0] if user_info else "N/A"
+    fname     = user_info[1] if user_info else "N/A"
+
+    # Store link in context for callback resolution
+    context.bot_data[f"link_req_{user_id}_{link[:50]}"] = link
+
+    try:
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=(
+                f"🔗 *New Link Analysis Request*\n\n"
+                f"👤 Name: {fname}\n"
+                f"🆔 User ID: `{user_id}`\n"
+                f"📛 Username: @{uname}\n"
+                f"🔗 Link: `{link}`"
+            ),
+            parse_mode="Markdown",
+            reply_markup=admin_link_keyboard(user_id, link)
+        )
+    except Exception as e:
+        logger.error(f"Admin link notify failed: {e}")
+
+    await update.message.reply_text(
+        "📨 *Link Approval Requested*\n\n"
+        f"Your request to analyse `{link}` has been sent to the admin.\n"
+        "You'll be notified once approved.",
+        parse_mode="Markdown", reply_markup=main_menu_keyboard()
+    )
+    return False
 
 # ─────────────────────────────────────────────
-# FULL ANALYSIS RUNNER (REAL DATA ONLY)
+# DEEP ANALYSIS ENGINE
 # ─────────────────────────────────────────────
-async def run_full_analysis(
+async def run_deep_analysis(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     link: str,
     entity_type: str
 ):
     """
-    Fetch REAL data from Telegram API and build analysis report.
-    NEVER generates or assumes posts or subscribers.
+    Full deep analysis using ONLY real Telegram API data.
+    Builds a root-cause diagnosis report.
     """
     username = _extract_username(link)
     user_id  = update.effective_user.id
 
     await update.message.reply_text(
-        f"🔍 Fetching real data for `@{username}` from Telegram...",
+        f"🔍 *Running deep compliance analysis on* `@{username}`...\n"
+        "Fetching real data from Telegram API.",
         parse_mode="Markdown"
     )
 
-    # ── 1. Fetch real chat data ──
     chat_data = await fetch_chat_data(context.bot, username)
 
     if not chat_data["success"]:
-        err = chat_data["error"]
-        if "private_or_restricted" in str(err):
-            msg = (
-                "🔒 *Cannot Access This Channel/Group*\n\n"
-                "This channel/group is private or has restricted access.\n\n"
-                "To allow full analysis:\n"
-                "• Make the channel/group public temporarily, OR\n"
-                "• Use the *🔧 Allow Bot to Fix* feature to add me as admin."
+        err = chat_data["error"] or ""
+        if "private_or_restricted" in err:
+            await update.message.reply_text(
+                "🔒 *Private or Restricted Channel*\n\n"
+                "Cannot access this channel. It may be private or restricted.\n\n"
+                "Options:\n"
+                "• Make it public temporarily, OR\n"
+                "• Use *🔧 Allow Bot to Fix* to add me as admin for full access.",
+                parse_mode="Markdown", reply_markup=main_menu_keyboard()
             )
         else:
-            msg = (
+            await update.message.reply_text(
                 "⚠️ *Unable to Access Data*\n\n"
-                "Unable to access sufficient data for this channel/group.\n"
-                "Please ensure the link is correct and the channel is public."
+                "Could not fetch data for this channel/group.\n"
+                "Please verify the link is correct and the channel is public.",
+                parse_mode="Markdown", reply_markup=main_menu_keyboard()
             )
-        await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=main_menu_keyboard())
         return
 
-    # ── 2. Profile score ──
-    profile     = analyze_profile_username(username, entity_type)
-    score       = profile["score"]
-    score_label = "🟢 Good" if score >= 80 else ("🟡 Needs Improvement" if score >= 50 else "🔴 High Risk")
-    name_alts   = generate_name_alternatives(username, entity_type)
+    # ── Collect all detected issues ──
+    root_causes   = []
+    all_recs      = []
+    total_penalty = 0
 
-    # ── 3. Build report header ──
-    emoji = {"channel": "📊", "group": "👥", "bot": "🤖"}.get(entity_type, "🔍")
+    # 1. Trust & authority
+    trust_issues = []
+    member_count = chat_data["member_count"]
+    if member_count is not None:
+        if member_count < 500:
+            trust_issues.append(f"Very low subscriber base ({member_count:,} users) — extremely low trust signal")
+            total_penalty += 40
+        elif member_count < 1000:
+            trust_issues.append(f"Low subscriber base ({member_count:,} users) — below Telegram Ads minimum trust threshold")
+            total_penalty += 25
+        elif member_count < 5000:
+            trust_issues.append(f"Moderate subscriber base ({member_count:,} users) — may reduce ad confidence")
+            total_penalty += 10
+    else:
+        trust_issues.append("Subscriber count unavailable — cannot verify audience size")
+        total_penalty += 15
+
+    if trust_issues:
+        root_causes.append(("🔴 Trust & Authority Issue", trust_issues))
+        for _ in trust_issues:
+            if member_count is not None and member_count < 1000:
+                all_recs.append("Grow your channel to at least 1,000–5,000+ subscribers before running ads")
+
+    # 2. Profile quality
+    profile       = analyze_profile_username(username, entity_type)
+    profile_issues = []
+
+    if not chat_data["has_description"]:
+        profile_issues.append("No description set — empty description is a known ad rejection trigger")
+        total_penalty += 20
+        all_recs.append("Add a clear, niche-specific description to your channel/group")
+    else:
+        desc_violations = detect_violations(chat_data["description"] or "")
+        if desc_violations:
+            for cat, phrases in desc_violations.items():
+                profile_issues.append(violation_explanation(cat, phrases))
+                all_recs.append(smart_recommendation(cat))
+                total_penalty += 20
+
+    if not chat_data["has_photo"]:
+        profile_issues.append("No profile photo — reduces brand trust signal")
+        total_penalty += 10
+        all_recs.append("Add a professional profile photo to increase trust score")
+
+    for issue_tuple in profile["issues"]:
+        profile_issues.append(issue_tuple[1])
+        total_penalty += issue_tuple[2]
+        all_recs.append(f"Fix username: {issue_tuple[1].split('—')[0].strip()}")
+
+    if profile_issues:
+        root_causes.append(("🟡 Profile Quality Issues", profile_issues))
+
+    # 3. Content analysis (description as proxy — posts require admin access)
+    content_issues = []
+    if chat_data["description"]:
+        desc_v = detect_violations(chat_data["description"])
+        if desc_v:
+            for cat, phrases in desc_v.items():
+                content_issues.append(violation_explanation(cat, phrases))
+                total_penalty += 15
+
+    if content_issues:
+        root_causes.append(("🔴 Content Policy Violations", content_issues))
+
+    # ── Calculate overall risk ──
+    if total_penalty >= 60:
+        risk_level  = "🔴 HIGH RISK — Ad approval very unlikely"
+    elif total_penalty >= 30:
+        risk_level  = "🟡 MEDIUM RISK — Ad approval uncertain"
+    else:
+        risk_level  = "🟢 LOW RISK — Good approval chances"
+
+    # ── Build root-cause diagnosis ──
+    emoji  = {"channel": "📊", "group": "👥", "bot": "🤖"}.get(entity_type, "🔍")
     report = (
-        f"{emoji} *{entity_type.capitalize()} Analysis Report*\n"
-        f"🔗 `{link}`\n"
-        f"👤 `@{username}`\n"
-        f"📛 Name: *{chat_data['name']}*\n\n"
+        f"{emoji} *Deep Compliance Report*\n"
+        f"🔗 `{link}`  |  `@{username}`\n"
+        f"📛 {chat_data['name']}\n\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"📊 *Profile Score*: {score}/100 — {score_label}\n"
+        f"📊 *Overall Risk*: {risk_level}\n"
+        f"📉 *Risk Score*: {min(total_penalty, 100)}/100\n"
         f"━━━━━━━━━━━━━━━━━━\n\n"
     )
 
-    # ── 4. Subscriber trust analysis (REAL data) ──
-    member_count = chat_data["member_count"]
     if member_count is not None:
-        report += f"👥 *Subscribers/Members*: {member_count:,}\n\n"
+        report += f"👥 *Subscribers*: {member_count:,}\n"
         if member_count < 1000:
             report += (
-                "⚠️ *Low Trust Level Detected*\n\n"
-                f"Your channel currently has *{member_count:,}* subscribers.\n\n"
-                "Channels with fewer than 1,000 subscribers often face low trust "
-                "from the Telegram Ads review system.\n\n"
-                "📌 *Recommendation*: Grow your channel to at least "
-                "1,000–5,000+ subscribers before running ads for better approval chances.\n\n"
+                "⚠️ *Low Trust Level Detected*\n"
+                f"Channels with fewer than 1,000 subscribers face low approval confidence.\n"
+                "➡️ Grow to 1,000–5,000+ before running ads.\n\n"
             )
-    else:
-        report += "👥 *Subscribers*: Unable to fetch (private or restricted)\n\n"
-
-    # ── 5. Description analysis (REAL data) ──
-    if chat_data["has_description"] and chat_data["description"]:
-        desc      = chat_data["description"]
-        desc_kw   = [kw for kw in RISKY_KEYWORDS if kw in desc.lower()]
-        report += f"📝 *Description*: _{desc[:200]}{'...' if len(desc) > 200 else ''}_\n\n"
-        if desc_kw:
-            report += f"⚠️ *Risky words in description*: `{'`, `'.join(desc_kw)}`\n\n"
         else:
-            report += "✅ *Description appears clean.*\n\n"
+            report += "\n"
     else:
-        report += (
-            "📝 *Description*: Not set\n"
-            "⚠️ Empty description is a known ad rejection trigger. "
-            "Add a clear, niche-specific description.\n\n"
-        )
+        report += "👥 *Subscribers*: Could not fetch\n\n"
 
-    # ── 6. Profile photo ──
-    if not chat_data["has_photo"]:
-        report += "🖼 *Profile Photo*: Not set — adds trust signal when present\n\n"
+    # Root cause section
+    if root_causes:
+        report += "🩺 *Root Cause Diagnosis*\n"
+        report += "_Why your ads are likely being declined:_\n\n"
+        for i, (title, issues) in enumerate(root_causes, 1):
+            report += f"*{i}. {title}:*\n"
+            for issue in issues:
+                report += f"   • {issue}\n"
+            report += "\n"
     else:
-        report += "🖼 *Profile Photo*: ✅ Set\n\n"
+        report += "✅ *No major compliance issues detected.*\n\n"
 
-    # ── 7. Username issues ──
-    if profile["issues"]:
-        report += "🚨 *Username Issues:*\n"
-        report += "\n".join(f"  {i}" for i in profile["issues"]) + "\n\n"
-    else:
-        report += "✅ *Username looks clean.*\n\n"
-
-    if profile["suggestions"]:
-        report += "💡 *Fixes:*\n" + "\n".join(f"  • {s}" for s in profile["suggestions"]) + "\n\n"
-
+    # Name alternatives
+    name_alts = generate_name_alternatives(username, entity_type)
     report += "✏️ *Name Alternatives:*\n" + "\n".join(f"  • {a}" for a in name_alts) + "\n\n"
 
-    # ── 8. Post analysis — NO fake posts ──
-    # Bots cannot read channel history unless admin.
-    # We ONLY analyze what we can access (description text).
+    # Deduplicated recommendations
+    if all_recs:
+        unique_recs = list(dict.fromkeys(all_recs))
+        report += "📋 *Expert Recommendations:*\n"
+        for rec in unique_recs[:6]:
+            report += f"  ➡️ {rec}\n"
+        report += "\n"
+
+    # Post scan notice
     report += (
-        "📋 *Post Content Analysis*:\n"
-        "To scan actual posts, add me as admin via *🔧 Allow Bot to Fix My Channel/Group*.\n"
-        "Without admin access, post-level scanning is not possible.\n\n"
+        "📋 *Post-Level Scan*:\n"
+        "Add me as admin via *🔧 Allow Bot to Fix My Channel/Group* "
+        "to enable full post scanning and auto-fix.\n\n"
     )
 
-    # ── 9. Save used link ──
-    set_used_link(user_id, link)
+    # Summary conclusion
+    if total_penalty >= 60:
+        report += (
+            "⚠️ *Summary*: These combined signals significantly reduce Telegram Ads "
+            "approval confidence. Address all issues above before submitting ads."
+        )
+    elif total_penalty >= 30:
+        report += (
+            "⚠️ *Summary*: Several factors are reducing your approval chances. "
+            "Fixing the issues above will improve your ad acceptance rate."
+        )
+    else:
+        report += "✅ *Summary*: Your channel shows good compliance signals. Minor improvements recommended."
 
-    # ── 10. Store context for target channel step ──
-    context.user_data["main_link"]         = link
-    context.user_data["main_entity_type"]  = entity_type
-    context.user_data["main_description"]  = chat_data.get("description", "")
+    # Store for target channel flow
+    context.user_data.update({
+        "main_link":        link,
+        "main_entity_type": entity_type,
+        "main_description": chat_data.get("description", ""),
+    })
 
-    # ── 11. Ask for target channels ──
     keyboard = InlineKeyboardMarkup([[
         InlineKeyboardButton("📡 Analyse Target Channels", callback_data="analyse_targets"),
         InlineKeyboardButton("⏭ Skip",                    callback_data="skip_targets"),
     ]])
 
-    await update.message.reply_text(
-        report,
-        parse_mode="Markdown",
-        reply_markup=keyboard
-    )
+    await update.message.reply_text(report, parse_mode="Markdown", reply_markup=keyboard)
 
-
-# ─────────────────────────────────────────────
-# TARGET CHANNEL ANALYSIS
-# ─────────────────────────────────────────────
-async def analyse_targets_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_reply_markup(reply_markup=None)
-    await context.bot.send_message(
-        chat_id=query.from_user.id,
-        text=(
-            "📡 *Target Channel Analysis*\n\n"
-            "Please send the list of target channels/groups used in your ad campaign.\n\n"
-            "Format — one per line:\n"
-            "`https://t.me/channel1`\n"
-            "`https://t.me/channel2`\n\n"
-            "Or send: /cancel to return to the menu."
-        ),
-        parse_mode="Markdown"
-    )
-    return WAIT_TARGET_LINKS
-
-async def analyse_targets_receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if await disabled_guard(update):
-        return ConversationHandler.END
-
-    raw_lines = update.message.text.strip().split("\n")
-    links     = [l.strip() for l in raw_lines if l.strip()]
-
-    if not links:
-        await update.message.reply_text("⚠️ No links detected. Please send at least one link.")
-        return WAIT_TARGET_LINKS
-
-    await update.message.reply_text(
-        f"🔍 Analysing {len(links)} target channel(s)... Please wait."
-    )
-
-    report = "📡 *Target Channel Risk Report*\n\n"
-
-    for link in links:
-        username = _extract_username(link)
-        if not username:
-            report += f"⚠️ Invalid link: `{link}` — skipped\n\n"
-            continue
-
-        chat_data = await fetch_chat_data(context.bot, username)
-
-        if not chat_data["success"]:
-            report += (
-                f"🔗 `@{username}`\n"
-                "⚠️ Unable to access this channel/group. "
-                "It may be private or restricted.\n\n"
-                "━━━━━━━━━━━━━━━━━━\n\n"
-            )
-            continue
-
-        # Risk scoring based ONLY on real data
-        risk_score  = 0
-        risk_flags  = []
-        suggestions = []
-
-        count = chat_data["member_count"]
-        if count is not None:
-            if count < 1000:
-                risk_score += 40
-                risk_flags.append(f"Subscriber count too low ({count:,} — needs 1,000+)")
-                suggestions.append("Grow audience to at least 1,000 before using as ad target")
-            elif count < 5000:
-                risk_score += 15
-                risk_flags.append(f"Moderate subscriber count ({count:,})")
-                suggestions.append("Aim for 5,000+ subscribers for stronger ad placement")
-        else:
-            risk_score += 20
-            risk_flags.append("Subscriber count unavailable — could not verify audience size")
-
-        if not chat_data["has_description"]:
-            risk_score += 25
-            risk_flags.append("No description set — weak profile signal")
-            suggestions.append("Add a niche-specific description")
-        else:
-            desc    = chat_data["description"] or ""
-            desc_kw = [kw for kw in RISKY_KEYWORDS if kw in desc.lower()]
-            if desc_kw:
-                risk_score += 20
-                risk_flags.append(f"Risky keywords in description: {', '.join(desc_kw)}")
-                suggestions.append("Remove policy-risky phrases from description")
-
-        if not chat_data["has_photo"]:
-            risk_score += 10
-            risk_flags.append("No profile photo — reduces trust signal")
-            suggestions.append("Add a professional profile photo")
-
-        # Assign risk level
-        if risk_score >= 50:
-            risk_label = "🔴 HIGH RISK"
-        elif risk_score >= 25:
-            risk_label = "🟡 MEDIUM RISK"
-        else:
-            risk_label = "🟢 LOW RISK"
-
-        report += f"🎯 *Target*: `@{username}`\n"
-        report += f"📛 Name: {chat_data['name']}\n"
-        if count is not None:
-            report += f"👥 Subscribers: {count:,}\n"
-        report += f"⚠️ *Risk Level*: {risk_label}\n\n"
-
-        if risk_flags:
-            report += "*Reasons (based on real data):*\n"
-            report += "\n".join(f"  • {f}" for f in risk_flags) + "\n\n"
-        else:
-            report += "✅ No major issues detected.\n\n"
-
-        if suggestions:
-            report += "*Recommendations:*\n"
-            report += "\n".join(f"  • {s}" for s in suggestions) + "\n\n"
-
-        report += "━━━━━━━━━━━━━━━━━━\n\n"
-        await asyncio.sleep(0.5)  # Rate limit protection
-
-    await update.message.reply_text(report, parse_mode="Markdown", reply_markup=main_menu_keyboard())
-    return ConversationHandler.END
-
-async def skip_targets(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_reply_markup(reply_markup=None)
-    await context.bot.send_message(
-        chat_id=query.from_user.id,
-        text="✅ Analysis complete. Use /start to return to the main menu.",
-        reply_markup=main_menu_keyboard()
-    )
 
 # ─────────────────────────────────────────────
 # /START
@@ -750,13 +858,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "❌ *Destination Quality* rejection\n"
         "⏳ Ads *stuck in review*\n"
         "📉 *Low CPM* performance\n\n"
-        "🚀 Request access below, then use the tools to analyse and fix your ads.",
+        "🚀 Request access below to get started.",
         parse_mode="Markdown",
         reply_markup=main_menu_keyboard()
     )
 
 # ─────────────────────────────────────────────
-# ACCESS REQUEST
+# ACCESS REQUEST — ALWAYS NOTIFIES ADMIN
 # ─────────────────────────────────────────────
 async def req_access(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -768,46 +876,35 @@ async def req_access(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     status = get_user_status(user.id)
-    if status == "approved":
-        await query.edit_message_text("✅ You already have access!", reply_markup=main_menu_keyboard())
-        return
     if status == "disabled":
         await query.edit_message_text("🚫 Access suspended. Contact @BlockSavvyMx.", reply_markup=main_menu_keyboard())
         return
-    if status == "denied":
-        await query.edit_message_text("❌ Access denied. Contact @BlockSavvyMx.", reply_markup=main_menu_keyboard())
-        return
 
-    upsert_user(user.id, user.username, user.first_name, "pending")
+    # Always notify admin regardless of current status
+    # This allows re-requests and admin to see panel at any time
+    upsert_user(user.id, user.username, user.first_name,
+                status if status in ("approved", "disabled") else "pending")
 
     try:
         await context.bot.send_message(
             chat_id=ADMIN_ID,
             text=(
-                f"🔔 *New Access Request*\n\n"
+                f"🔔 *Access Request*\n\n"
                 f"👤 Name: {user.first_name}\n"
                 f"🆔 User ID: `{user.id}`\n"
-                f"📛 Username: @{user.username or 'N/A'}"
+                f"📛 Username: @{user.username or 'N/A'}\n"
+                f"📊 Current Status: `{status or 'new'}`"
             ),
             parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton("✅ Accept",             callback_data=f"accept_{user.id}"),
-                    InlineKeyboardButton("❌ Deny",               callback_data=f"deny_{user.id}"),
-                ],
-                [
-                    InlineKeyboardButton("🚫 Disable User",       callback_data=f"disable_{user.id}"),
-                    InlineKeyboardButton("🗑 Remove From Assets",  callback_data=f"removeassets_{user.id}"),
-                ],
-            ])
+            reply_markup=admin_user_keyboard(user.id)
         )
-        await query.edit_message_text(
-            "⏳ *Request sent!*\n\nWait for admin approval. You'll be notified.",
-            parse_mode="Markdown",
-            reply_markup=main_menu_keyboard()
-        )
+        if status == "approved":
+            msg = "✅ You already have access! Your request has been re-sent to admin for review."
+        else:
+            msg = "⏳ *Request sent!*\n\nWait for admin approval. You'll be notified."
+        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=main_menu_keyboard())
     except Exception as e:
-        logger.error(f"Admin message failed: {e}")
+        logger.error(f"Admin notify failed: {e}")
         await query.edit_message_text("⚠️ Could not reach admin. Try again later.", reply_markup=main_menu_keyboard())
 
 # ─────────────────────────────────────────────
@@ -821,28 +918,38 @@ async def admin_decision(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("⛔ Not authorised.", show_alert=True)
         return
 
-    action, target_str = query.data.split("_", 1)
-    target_id = int(target_str)
+    parts     = query.data.split("_", 1)
+    action    = parts[0]
+    target_id = int(parts[1])
 
     if action == "accept":
         set_user_status(target_id, "approved")
-        await query.edit_message_text(f"✅ User `{target_id}` approved.", parse_mode="Markdown")
+        # Re-send persistent admin panel
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=f"✅ User `{target_id}` *approved*.\n\n_Admin panel remains active below:_",
+            parse_mode="Markdown",
+            reply_markup=admin_user_keyboard(target_id)
+        )
         await context.bot.send_message(
             chat_id=target_id,
             text=(
                 "✅ *Access Granted!*\n\n"
                 "You now have full access to AdApprovalPilot AI.\n"
                 "Use /start to open the menu.\n\n"
-                "⚠️ You have *one free link analysis*.\n"
-                "Re-analysing the same link is always allowed.\n"
-                "Contact @BlockSavvyMx to unlock a different link."
+                "📌 Each new link you analyse requires separate admin approval."
             ),
             parse_mode="Markdown"
         )
 
     elif action == "deny":
         set_user_status(target_id, "denied")
-        await query.edit_message_text(f"❌ User `{target_id}` denied.", parse_mode="Markdown")
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=f"❌ User `{target_id}` *denied*.\n\n_Admin panel:_",
+            parse_mode="Markdown",
+            reply_markup=admin_user_keyboard(target_id)
+        )
         await context.bot.send_message(
             chat_id=target_id,
             text="❌ *Access Denied.*\n\nContact @BlockSavvyMx if this is a mistake.",
@@ -851,11 +958,34 @@ async def admin_decision(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif action == "disable":
         set_user_status(target_id, "disabled")
-        await query.edit_message_text(f"🚫 User `{target_id}` disabled.", parse_mode="Markdown")
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=f"🚫 User `{target_id}` *disabled*.\n\n_Admin panel:_",
+            parse_mode="Markdown",
+            reply_markup=admin_user_keyboard(target_id)
+        )
         try:
             await context.bot.send_message(
                 chat_id=target_id,
-                text="🚫 *Your bot access has been suspended by the admin.*\n\nContact @BlockSavvyMx to appeal.",
+                text="🚫 *Access suspended by admin.*\n\nContact @BlockSavvyMx to appeal.",
+                parse_mode="Markdown"
+            )
+        except Exception:
+            pass
+
+    elif action == "reset":
+        set_user_status(target_id, "pending")
+        reset_user_links(target_id)
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=f"🔁 User `{target_id}` access *reset*. All approved links cleared.\n\n_Admin panel:_",
+            parse_mode="Markdown",
+            reply_markup=admin_user_keyboard(target_id)
+        )
+        try:
+            await context.bot.send_message(
+                chat_id=target_id,
+                text="🔁 *Your access has been reset.*\n\nPlease request access again via /start.",
                 parse_mode="Markdown"
             )
         except Exception:
@@ -867,14 +997,193 @@ async def admin_decision(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 await context.bot.leave_chat(chat_id=joined)
                 clear_joined_chat(target_id)
-                await query.edit_message_text(f"🗑 Bot left chat `{joined}` for user `{target_id}`.", parse_mode="Markdown")
+                await context.bot.send_message(
+                    chat_id=ADMIN_ID,
+                    text=f"🗑 Bot left chat `{joined}` for user `{target_id}`.\n\n_Admin panel:_",
+                    parse_mode="Markdown",
+                    reply_markup=admin_user_keyboard(target_id)
+                )
             except Exception as e:
-                await query.edit_message_text(f"⚠️ Could not leave chat: {e}", parse_mode="Markdown")
+                await context.bot.send_message(
+                    chat_id=ADMIN_ID,
+                    text=f"⚠️ Could not leave chat `{joined}`: {e}",
+                    parse_mode="Markdown",
+                    reply_markup=admin_user_keyboard(target_id)
+                )
         else:
-            await query.edit_message_text(f"ℹ️ No active chat found for user `{target_id}`.", parse_mode="Markdown")
+            await context.bot.send_message(
+                chat_id=ADMIN_ID,
+                text=f"ℹ️ No active chat for user `{target_id}`.\n\n_Admin panel:_",
+                parse_mode="Markdown",
+                reply_markup=admin_user_keyboard(target_id)
+            )
 
 # ─────────────────────────────────────────────
-# CHANNEL INDEX
+# LINK APPROVAL CALLBACKS
+# ─────────────────────────────────────────────
+async def link_decision(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.from_user.id != ADMIN_ID:
+        await query.answer("⛔ Not authorised.", show_alert=True)
+        return
+
+    # Parse: approvelink_<user_id>_<safe_link> or denylink_<user_id>_<safe_link>
+    parts      = query.data.split("_", 2)
+    action     = parts[0]      # approvelink / denylink
+    target_id  = int(parts[1])
+    safe_link  = parts[2]
+
+    # Recover full link from bot_data
+    full_link = context.bot_data.get(f"link_req_{target_id}_{safe_link}", f"https://t.me/{safe_link}")
+
+    if action == "approvelink":
+        set_link_status(target_id, full_link, "approved")
+        await query.edit_message_text(
+            f"✅ Link `{full_link}` approved for user `{target_id}`.",
+            parse_mode="Markdown"
+        )
+        await context.bot.send_message(
+            chat_id=target_id,
+            text=(
+                f"✅ *Link Approved!*\n\n"
+                f"You can now analyse:\n`{full_link}`\n\n"
+                "Use the Channel/Group/Bot Index button to proceed."
+            ),
+            parse_mode="Markdown"
+        )
+    else:
+        set_link_status(target_id, full_link, "denied")
+        await query.edit_message_text(
+            f"❌ Link `{full_link}` denied for user `{target_id}`.",
+            parse_mode="Markdown"
+        )
+        await context.bot.send_message(
+            chat_id=target_id,
+            text=f"❌ *Link Denied*\n\nAdmin denied analysis of:\n`{full_link}`\n\nContact @BlockSavvyMx for more info.",
+            parse_mode="Markdown"
+        )
+
+# ─────────────────────────────────────────────
+# TARGET CHANNEL ANALYSIS
+# ─────────────────────────────────────────────
+async def analyse_targets_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_reply_markup(reply_markup=None)
+    await context.bot.send_message(
+        chat_id=query.from_user.id,
+        text=(
+            "📡 *Target Channel Analysis*\n\n"
+            "Send the list of target channels/groups used in your ad campaign.\n\n"
+            "One per line:\n"
+            "`https://t.me/channel1`\n"
+            "`https://t.me/channel2`\n\n"
+            "Or /cancel to return to menu."
+        ),
+        parse_mode="Markdown"
+    )
+    return WAIT_TARGET_LINKS
+
+async def analyse_targets_receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if await disabled_guard(update):
+        return ConversationHandler.END
+    lines = [l.strip() for l in update.message.text.strip().split("\n") if l.strip()]
+    if not lines:
+        await update.message.reply_text("⚠️ No links found. Send at least one link.")
+        return WAIT_TARGET_LINKS
+
+    await update.message.reply_text(f"🔍 Analysing {len(lines)} target(s) using real Telegram data...")
+
+    report = "📡 *Target Channel Risk Report*\n_(Based on real Telegram data only)_\n\n"
+
+    for link in lines:
+        username = _extract_username(link)
+        if not username:
+            report += f"⚠️ Invalid: `{link}` — skipped\n\n━━━━━━━━━━━━━━━━━━\n\n"
+            continue
+
+        chat_data = await fetch_chat_data(context.bot, username)
+
+        if not chat_data["success"]:
+            report += (
+                f"🎯 *Target*: `@{username}`\n"
+                "⚠️ Unable to access — private or restricted.\n\n"
+                "━━━━━━━━━━━━━━━━━━\n\n"
+            )
+            continue
+
+        risk_score  = 0
+        risk_flags  = []
+        suggestions = []
+
+        count = chat_data["member_count"]
+        if count is not None:
+            if count < 500:
+                risk_score += 50
+                risk_flags.append(f"Very low audience ({count:,} subscribers — high rejection risk)")
+                suggestions.append("Grow to 1,000+ before using as ad target")
+            elif count < 1000:
+                risk_score += 30
+                risk_flags.append(f"Low subscriber count ({count:,})")
+                suggestions.append("Aim for 5,000+ subscribers for stronger placement")
+            elif count < 5000:
+                risk_score += 10
+                risk_flags.append(f"Moderate subscriber count ({count:,})")
+        else:
+            risk_score += 20
+            risk_flags.append("Subscriber count unavailable")
+
+        if not chat_data["has_description"]:
+            risk_score += 25
+            risk_flags.append("No description — weak profile signal")
+            suggestions.append("Add a niche-specific description")
+        else:
+            desc_v = detect_violations(chat_data["description"] or "")
+            for cat, phrases in desc_v.items():
+                risk_score += 20
+                risk_flags.append(violation_explanation(cat, phrases))
+                suggestions.append(smart_recommendation(cat))
+
+        if not chat_data["has_photo"]:
+            risk_score += 10
+            risk_flags.append("No profile photo")
+            suggestions.append("Add a professional profile photo")
+
+        risk_label = (
+            "🔴 HIGH RISK" if risk_score >= 50 else
+            "🟡 MEDIUM RISK" if risk_score >= 25 else
+            "🟢 LOW RISK"
+        )
+
+        report += f"🎯 *Target*: `@{username}`\n"
+        report += f"📛 {chat_data['name']}\n"
+        if count is not None:
+            report += f"👥 {count:,} subscribers\n"
+        report += f"⚠️ *Risk Level*: {risk_label}\n\n"
+        if risk_flags:
+            report += "*Reasons (real data only):*\n" + "\n".join(f"  • {f}" for f in risk_flags) + "\n\n"
+        if suggestions:
+            report += "*Recommendations:*\n" + "\n".join(f"  ➡️ {s}" for s in suggestions) + "\n\n"
+        report += "━━━━━━━━━━━━━━━━━━\n\n"
+        await asyncio.sleep(0.5)
+
+    await update.message.reply_text(report, parse_mode="Markdown", reply_markup=main_menu_keyboard())
+    return ConversationHandler.END
+
+async def skip_targets(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_reply_markup(reply_markup=None)
+    await context.bot.send_message(
+        chat_id=query.from_user.id,
+        text="✅ Analysis complete. Use /start to return to main menu.",
+        reply_markup=main_menu_keyboard()
+    )
+
+# ─────────────────────────────────────────────
+# CHANNEL / GROUP / BOT INDEX
 # ─────────────────────────────────────────────
 async def channel_index_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -894,14 +1203,11 @@ async def channel_index_analyze(update: Update, context: ContextTypes.DEFAULT_TY
     if not _extract_username(link):
         await update.message.reply_text("⚠️ Invalid link. Send a valid `https://t.me/username` link.", parse_mode="Markdown")
         return WAIT_CHANNEL_LINK
-    if not await link_limit_check(update, link):
+    if not await link_access_check(update, context, link):
         return ConversationHandler.END
-    await run_full_analysis(update, context, link, "channel")
+    await run_deep_analysis(update, context, link, "channel")
     return ConversationHandler.END
 
-# ─────────────────────────────────────────────
-# GROUP INDEX
-# ─────────────────────────────────────────────
 async def group_index_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -920,14 +1226,11 @@ async def group_index_analyze(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not _extract_username(link):
         await update.message.reply_text("⚠️ Invalid link. Send a valid `https://t.me/username` link.", parse_mode="Markdown")
         return WAIT_GROUP_LINK
-    if not await link_limit_check(update, link):
+    if not await link_access_check(update, context, link):
         return ConversationHandler.END
-    await run_full_analysis(update, context, link, "group")
+    await run_deep_analysis(update, context, link, "group")
     return ConversationHandler.END
 
-# ─────────────────────────────────────────────
-# BOT INDEX
-# ─────────────────────────────────────────────
 async def bot_index_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -942,70 +1245,58 @@ async def bot_index_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def bot_index_analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await disabled_guard(update):
         return ConversationHandler.END
-    link = update.message.text.strip()
+    link     = update.message.text.strip()
     username = _extract_username(link)
     if not username:
-        await update.message.reply_text("⚠️ Invalid link. Send a valid `https://t.me/username` link.", parse_mode="Markdown")
+        await update.message.reply_text("⚠️ Invalid link.", parse_mode="Markdown")
         return WAIT_BOT_LINK
-    if not await link_limit_check(update, link):
+    if not await link_access_check(update, context, link):
         return ConversationHandler.END
 
     await update.message.reply_text("🔍 Fetching real bot data from Telegram...")
-
     chat_data = await fetch_chat_data(context.bot, username)
     profile   = analyze_profile_username(username, "bot")
     score     = profile["score"]
-    score_label = "🟢 Good" if score >= 80 else ("🟡 Needs Improvement" if score >= 50 else "🔴 High Risk")
+    score_lbl = "🟢 Good" if score >= 80 else ("🟡 Needs Improvement" if score >= 50 else "🔴 High Risk")
     name_alts = generate_name_alternatives(username, "bot")
 
     report = (
-        f"🤖 *Bot Analysis Report*\n"
-        f"🔗 `{link}`\n"
-        f"👤 `@{username}`\n\n"
+        f"🤖 *Bot Compliance Report*\n"
+        f"🔗 `{link}`  |  `@{username}`\n\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"📊 *Profile Score*: {score}/100 — {score_label}\n"
+        f"📊 *Profile Score*: {score}/100 — {score_lbl}\n"
         f"━━━━━━━━━━━━━━━━━━\n\n"
     )
-
     if chat_data["success"]:
         report += f"📛 Name: *{chat_data['name']}*\n"
         if chat_data["has_description"]:
-            desc    = chat_data["description"]
-            desc_kw = [kw for kw in RISKY_KEYWORDS if kw in desc.lower()]
+            desc   = chat_data["description"] or ""
+            desc_v = detect_violations(desc)
             report += f"📝 Description: _{desc[:200]}_\n"
-            if desc_kw:
-                report += f"⚠️ Risky words in description: `{'`, `'.join(desc_kw)}`\n"
+            if desc_v:
+                for cat, phrases in desc_v.items():
+                    report += f"  ❌ {violation_explanation(cat, phrases)}\n"
             else:
-                report += "✅ Description is clean.\n"
+                report += "  ✅ Description is clean.\n"
         else:
-            report += "📝 Description: Not set — add one via BotFather\n"
+            report += "📝 Description: Not set ⚠️\n"
         report += f"🖼 Photo: {'✅ Set' if chat_data['has_photo'] else '❌ Not set'}\n\n"
     else:
-        report += (
-            "⚠️ *Could not fetch full bot data.*\n"
-            "Ensure the bot is public and the link is correct.\n\n"
-        )
+        report += "⚠️ Could not fetch full bot profile data.\n\n"
 
-    if profile["issues"]:
-        report += "🚨 *Username Issues:*\n" + "\n".join(f"  {i}" for i in profile["issues"]) + "\n\n"
-    else:
-        report += "✅ *Username looks clean.*\n\n"
-
-    if profile["suggestions"]:
-        report += "💡 *Fixes:*\n" + "\n".join(f"  • {s}" for s in profile["suggestions"]) + "\n\n"
-
+    for issue_tuple in profile["issues"]:
+        report += f"  ❌ {issue_tuple[1]}\n"
+    report += "\n"
     report += "✏️ *Name Alternatives:*\n" + "\n".join(f"  • {a}" for a in name_alts) + "\n\n"
 
-    # CTA/button risk check on username
-    risky_ctas = {"earn": "Get Started", "free": "Explore Features", "money": "Learn More", "win": "Join Community"}
-    found_ctas = [(r, s) for r, s in risky_ctas.items() if r in username.lower()]
-    if found_ctas:
-        report += "🔘 *Risky CTA Patterns Detected:*\n"
-        for r, s in found_ctas:
-            report += f"  ❌ `{r}` in bot name → Suggest: `{s}`\n"
+    risky_ctas = {"earn": "Get Started", "free": "Explore", "money": "Learn More", "win": "Join", "signal": "Insights"}
+    found = [(r, s) for r, s in risky_ctas.items() if r in username.lower()]
+    if found:
+        report += "🔘 *Risky CTA Patterns in Username:*\n"
+        for r, s in found:
+            report += f"  ❌ `{r}` → Suggest: `{s}`\n"
         report += "\n"
 
-    set_used_link(update.effective_user.id, link)
     await update.message.reply_text(report, parse_mode="Markdown", reply_markup=main_menu_keyboard())
     return ConversationHandler.END
 
@@ -1019,8 +1310,8 @@ async def ad_text_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
     await query.edit_message_text(
         "✍️ *Ad Text Generator*\n\n"
-        "Send your channel, group, or bot link.\n"
-        "I'll generate 3 custom, policy-compliant ad copies based on the real channel data.\n\n"
+        "Send your channel/group/bot link.\n"
+        "I'll generate 3 compliant ad copies based on real channel data.\n\n"
         "Example: `https://t.me/yourchannel`",
         parse_mode="Markdown"
     )
@@ -1032,26 +1323,27 @@ async def ad_text_analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
     link     = update.message.text.strip()
     username = _extract_username(link)
     if not username:
-        await update.message.reply_text("⚠️ Invalid link. Send a valid `https://t.me/username` link.", parse_mode="Markdown")
+        await update.message.reply_text("⚠️ Invalid link.", parse_mode="Markdown")
         return WAIT_AD_LINK
 
-    await update.message.reply_text("✍️ Fetching channel data to generate accurate ad copies...")
-
+    await update.message.reply_text("✍️ Fetching real channel data for ad copy generation...")
     chat_data   = await fetch_chat_data(context.bot, username)
     description = chat_data.get("description") if chat_data["success"] else None
 
-    if not chat_data["success"] or not description:
+    if not description:
         await update.message.reply_text(
             "ℹ️ *Could not fetch channel description.*\n\n"
-            "Please tell me more about your channel niche so I can generate accurate ad copies.\n\n"
-            "Example: 'Crypto trading tips for beginners in Nigeria'",
+            "Please describe your channel niche so I can generate accurate ad copies.\n\n"
+            "Example: 'Crypto trading analysis for beginners in Nigeria'",
             parse_mode="Markdown"
         )
         context.user_data["ad_username"] = username
         return WAIT_NICHE_DETAILS
 
-    entity_type = "bot" if username.lower().endswith("bot") else (
-        "group" if any(w in username.lower() for w in ["group", "chat", "community"]) else "channel"
+    entity_type = (
+        "bot"     if username.lower().endswith("bot") else
+        "group"   if any(w in username.lower() for w in ["group", "chat", "community"]) else
+        "channel"
     )
     copies   = generate_ad_copies(username, entity_type, description)
     response = (
@@ -1059,8 +1351,8 @@ async def ad_text_analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"_(Based on real channel data)_\n\n"
         + "\n\n".join(copies)
         + "\n\n📋 *Tips:*\n"
-        "• A/B test all 3 — track which has the best CTR\n"
-        "• Match destination to ad copy promise\n"
+        "• A/B test all 3 — track CTR per copy\n"
+        "• Match ad destination to copy promise\n"
         "• Never add risky phrases after generation"
     )
     await update.message.reply_text(response, parse_mode="Markdown", reply_markup=main_menu_keyboard())
@@ -1071,18 +1363,16 @@ async def ad_text_niche_details(update: Update, context: ContextTypes.DEFAULT_TY
         return ConversationHandler.END
     niche    = update.message.text.strip()
     username = context.user_data.get("ad_username", "yourchannel")
-
-    entity_type = "bot" if username.lower().endswith("bot") else (
-        "group" if any(w in username.lower() for w in ["group", "chat", "community"]) else "channel"
+    entity_type = (
+        "bot"     if username.lower().endswith("bot") else
+        "group"   if any(w in username.lower() for w in ["group", "chat", "community"]) else
+        "channel"
     )
     copies   = generate_ad_copies(username, entity_type, niche)
     response = (
         f"✍️ *3 Custom Ad Copies for* `@{username}`\n"
         f"_(Based on niche: {niche})_\n\n"
         + "\n\n".join(copies)
-        + "\n\n📋 *Tips:*\n"
-        "• A/B test all 3 — track which has the best CTR\n"
-        "• Match destination to ad copy promise"
     )
     await update.message.reply_text(response, parse_mode="Markdown", reply_markup=main_menu_keyboard())
     return ConversationHandler.END
@@ -1111,26 +1401,23 @@ async def ad_budget_analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except ValueError:
         await update.message.reply_text("⚠️ Enter a valid positive number. Example: `50`", parse_mode="Markdown")
         return WAIT_BUDGET
-
     duration  = 7 if budget <= 50 else (14 if budget <= 200 else 30)
     daily_opt = round(budget / duration, 2)
-
     await update.message.reply_text(
         f"💰 *Budget Optimization Report*\n\n"
         f"💵 *Total*: ${budget:.2f} ≈ {usd_to_ton(budget)} TON\n"
         f"📅 *Duration*: {duration} days\n"
         f"📆 *Daily Spend*: ${daily_opt:.2f}/day ≈ {usd_to_ton(daily_opt)} TON/day\n\n"
         f"📋 *Strategy:*\n"
-        f"• Days 1–3: Test 2–3 ad variants\n"
-        f"• Days 4–7: Scale best, pause others\n"
-        f"• Pause ads with CTR below 1% after day 3\n\n"
+        f"• Days 1–3: Test 2–3 ad variants simultaneously\n"
+        f"• Days 4–7: Scale best performer, pause others\n"
+        f"• Pause any ad with CTR below 1% after day 3\n\n"
         f"💡 *Tips:*\n"
-        f"• Start in Tier 2 countries (NG, IN, BR) for lower CPM\n"
-        f"• Use a channel post as your ad destination\n"
+        f"• Start in Tier 2 geos (NG, IN, BR) for lower CPM\n"
+        f"• Use a channel post as ad destination\n"
         f"• Set frequency cap: 2 impressions/user/day\n\n"
         f"🪙 Rate: ~{TON_PER_USD} TON/USD (verify on CoinGecko)",
-        parse_mode="Markdown",
-        reply_markup=main_menu_keyboard()
+        parse_mode="Markdown", reply_markup=main_menu_keyboard()
     )
     return ConversationHandler.END
 
@@ -1139,17 +1426,17 @@ async def ad_budget_analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ─────────────────────────────────────────────
 CPM_TABLE = {
     "crypto":    (1.5, 3.5, "High",   "Test Tier 2 countries (IN, NG, BR) to reduce CPM"),
-    "finance":   (1.2, 3.0, "High",   "Use narrow interest targeting to control CPM"),
+    "finance":   (1.2, 3.0, "High",   "Use narrow interest targeting to control costs"),
     "tech":      (0.8, 2.0, "Medium", "Mix Tier 1 and Tier 2 for balanced volume and cost"),
-    "education": (0.5, 1.2, "Low",    "Great niche for tight budgets"),
-    "gaming":    (0.6, 1.5, "Low",    "Use interactive creatives for best CTR"),
-    "health":    (0.9, 2.2, "Medium", "Avoid health claims — policy-sensitive"),
-    "ecommerce": (0.7, 1.8, "Medium", "Link to channel post not website"),
+    "education": (0.5, 1.2, "Low",    "Great niche for tight budgets — high engagement rate"),
+    "gaming":    (0.6, 1.5, "Low",    "Interactive creatives perform best here"),
+    "health":    (0.9, 2.2, "Medium", "Avoid health claims — policy-sensitive niche"),
+    "ecommerce": (0.7, 1.8, "Medium", "Link to channel post not website for better quality score"),
     "news":      (0.4, 1.0, "Low",    "Narrow by language for better traffic quality"),
     "trading":   (1.8, 4.0, "High",   "Full financial ad policy compliance required"),
-    "nft":       (1.0, 2.5, "High",   "Avoid hype language — high rejection rate"),
+    "nft":       (1.0, 2.5, "High",   "Avoid hype language — very high rejection rate"),
     "fitness":   (0.6, 1.4, "Low",    "Narrow by specific goal for better targeting"),
-    "travel":    (0.5, 1.3, "Low",    "Plan around seasonal peaks for efficiency"),
+    "travel":    (0.5, 1.3, "Low",    "Plan campaigns around seasonal peaks"),
 }
 
 async def ad_cpm_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1190,8 +1477,7 @@ async def ad_cpm_analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• Broad targeting = lower CPM, lower quality traffic\n"
         f"• Test 2–3 creatives before scaling\n\n"
         f"🪙 Rate: ~{TON_PER_USD} TON/USD (verify on CoinGecko)",
-        parse_mode="Markdown",
-        reply_markup=main_menu_keyboard()
+        parse_mode="Markdown", reply_markup=main_menu_keyboard()
     )
     return ConversationHandler.END
 
@@ -1207,7 +1493,7 @@ async def bot_join_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🔧 *Bot Fix Mode*\n\n"
         "To allow me to fix your channel or group:\n\n"
         "1️⃣ Add me as *admin* to your channel/group\n"
-        "2️⃣ Grant permissions: Edit messages, Delete messages, Change group info\n"
+        "2️⃣ Grant: Edit messages, Delete messages, Change group info\n"
         "3️⃣ Send the channel/group link below:",
         parse_mode="Markdown"
     )
@@ -1221,10 +1507,10 @@ async def bot_join_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id  = update.effective_user.id
 
     if not username:
-        await update.message.reply_text("⚠️ Invalid link. Send a valid `https://t.me/username` link.", parse_mode="Markdown")
+        await update.message.reply_text("⚠️ Invalid link.", parse_mode="Markdown")
         return WAIT_JOIN_LINK
 
-    await update.message.reply_text(f"🔍 Checking bot admin status in `@{username}`...", parse_mode="Markdown")
+    await update.message.reply_text(f"🔍 Verifying admin status in `@{username}`...", parse_mode="Markdown")
 
     try:
         chat   = await context.bot.get_chat(f"@{username}")
@@ -1233,16 +1519,35 @@ async def bot_join_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if member.status not in ["administrator", "creator"]:
             await update.message.reply_text(
                 "⚠️ I'm not an admin in that chat yet.\n\n"
-                "Please add me as admin with the correct permissions, then send the link again.",
+                "Add me as admin with the required permissions, then send the link again.",
                 reply_markup=main_menu_keyboard()
             )
             return WAIT_JOIN_LINK
 
         set_joined_chat(user_id, str(chat.id))
+
+        # Notify admin that bot was added
+        user_info = get_user_info(user_id)
+        uname     = user_info[0] if user_info else "N/A"
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=(
+                f"🔔 *Bot Added to Channel/Group*\n\n"
+                f"👤 User: @{uname} (`{user_id}`)\n"
+                f"📢 Chat: `@{username}`\n"
+                f"🆔 Chat ID: `{chat.id}`"
+            ),
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("✅ Allow Bot to Stay",    callback_data=f"botstay_{chat.id}"),
+                InlineKeyboardButton("❌ Remove Bot Now",       callback_data=f"botleave_{chat.id}"),
+            ]])
+        )
+
         await update.message.reply_text(
             f"✅ *Bot is admin in* `@{username}`!\n\n"
-            "I can now fix the channel/group name, description, and non-compliant posts.\n\n"
-            "⚠️ *Do you want me to apply these fixes automatically?*",
+            "Admin has been notified.\n\n"
+            "⚠️ *Do you want me to apply compliance fixes automatically?*",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton("✅ Yes, apply fixes", callback_data=f"applyfix_{chat.id}"),
@@ -1253,12 +1558,33 @@ async def bot_join_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         await update.message.reply_text(
-            f"⚠️ Could not access `@{username}`.\nEnsure the link is correct and I am added as admin.",
-            parse_mode="Markdown",
-            reply_markup=main_menu_keyboard()
+            f"⚠️ Could not verify admin status for `@{username}`.\n"
+            "Check the link and ensure I am added as admin.",
+            parse_mode="Markdown", reply_markup=main_menu_keyboard()
         )
         logger.error(f"Bot join error: {e}")
         return ConversationHandler.END
+
+async def bot_stay(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if query.from_user.id != ADMIN_ID:
+        await query.answer("⛔ Not authorised.", show_alert=True)
+        return
+    await query.edit_message_text("✅ Bot is allowed to stay in the channel/group.", parse_mode="Markdown")
+
+async def bot_leave(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query   = update.callback_query
+    await query.answer()
+    if query.from_user.id != ADMIN_ID:
+        await query.answer("⛔ Not authorised.", show_alert=True)
+        return
+    chat_id = int(query.data.split("_", 1)[1])
+    try:
+        await context.bot.leave_chat(chat_id=chat_id)
+        await query.edit_message_text(f"✅ Bot has left chat `{chat_id}`.", parse_mode="Markdown")
+    except Exception as e:
+        await query.edit_message_text(f"⚠️ Could not leave chat: {e}", parse_mode="Markdown")
 
 async def apply_fix(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query   = update.callback_query
@@ -1270,18 +1596,20 @@ async def apply_fix(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.set_chat_description(
             chat_id=chat_id,
             description=(
-                "Official channel with expert insights and curated content. "
-                "Follow for reliable updates in your niche."
+                "Official channel delivering expert insights and curated content. "
+                "Follow for reliable, niche-specific updates."
             )
         )
         results.append("✅ Description updated to policy-compliant version")
     except Exception as e:
-        results.append(f"⚠️ Could not update description: {e}")
+        results.append(f"⚠️ Description update failed: {e}")
     await context.bot.send_message(
         chat_id=query.from_user.id,
-        text="🔧 *Fix Results:*\n\n" + "\n".join(results),
-        parse_mode="Markdown",
-        reply_markup=main_menu_keyboard()
+        text="🔧 *Fix Results:*\n\n" + "\n".join(results) + (
+            "\n\n📋 For full post-level scanning and editing, "
+            "use Channel/Group Index while I remain as admin."
+        ),
+        parse_mode="Markdown", reply_markup=main_menu_keyboard()
     )
 
 # ─────────────────────────────────────────────
@@ -1317,12 +1645,15 @@ def register_handlers():
     ptb_app.add_handler(CommandHandler("start", start))
 
     # Standalone callbacks — registered BEFORE ConversationHandlers
-    ptb_app.add_handler(CallbackQueryHandler(req_access,            pattern="^req_access$"))
-    ptb_app.add_handler(CallbackQueryHandler(admin_decision,        pattern="^(accept|deny|disable|removeassets)_\\d+$"))
-    ptb_app.add_handler(CallbackQueryHandler(skip_targets,          pattern="^skip_targets$"))
-    ptb_app.add_handler(CallbackQueryHandler(apply_fix,             pattern="^applyfix_-?\\d+$"))
+    ptb_app.add_handler(CallbackQueryHandler(req_access,      pattern="^req_access$"))
+    ptb_app.add_handler(CallbackQueryHandler(admin_decision,  pattern="^(accept|deny|disable|reset|removeassets)_\\d+$"))
+    ptb_app.add_handler(CallbackQueryHandler(link_decision,   pattern="^(approvelink|denylink)_\\d+_.+$"))
+    ptb_app.add_handler(CallbackQueryHandler(skip_targets,    pattern="^skip_targets$"))
+    ptb_app.add_handler(CallbackQueryHandler(apply_fix,       pattern="^applyfix_-?\\d+$"))
+    ptb_app.add_handler(CallbackQueryHandler(bot_stay,        pattern="^botstay_-?\\d+$"))
+    ptb_app.add_handler(CallbackQueryHandler(bot_leave,       pattern="^botleave_-?\\d+$"))
 
-    # Target channel conversation — triggered by callback inside run_full_analysis output
+    # Target channel conversation
     ptb_app.add_handler(ConversationHandler(
         entry_points=[CallbackQueryHandler(analyse_targets_start, pattern="^analyse_targets$")],
         states={WAIT_TARGET_LINKS: [MessageHandler(filters.TEXT & ~filters.COMMAND, analyse_targets_receive)]},
@@ -1358,8 +1689,8 @@ def register_handlers():
     ptb_app.add_handler(ConversationHandler(
         entry_points=[CallbackQueryHandler(ad_text_start, pattern="^ad_text$")],
         states={
-            WAIT_AD_LINK:      [MessageHandler(filters.TEXT & ~filters.COMMAND, ad_text_analyze)],
-            WAIT_NICHE_DETAILS:[MessageHandler(filters.TEXT & ~filters.COMMAND, ad_text_niche_details)],
+            WAIT_AD_LINK:       [MessageHandler(filters.TEXT & ~filters.COMMAND, ad_text_analyze)],
+            WAIT_NICHE_DETAILS: [MessageHandler(filters.TEXT & ~filters.COMMAND, ad_text_niche_details)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
         per_message=False,
@@ -1388,7 +1719,6 @@ def register_handlers():
         fallbacks=[CommandHandler("cancel", cancel)],
         per_message=False,
     ))
-
 
 # ─────────────────────────────────────────────
 # STARTUP
