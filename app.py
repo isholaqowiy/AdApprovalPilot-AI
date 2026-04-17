@@ -284,8 +284,8 @@ async def run_deep_analysis(
     user_id  = update.effective_user.id
 
     await update.message.reply_text(
-        f"🔍 Fetching real data for `@{username}`...\n"
-        "🤖 Running AI compliance analysis. Please wait.",
+        f"🔍 *AdApprovalPilot AI* is fetching real data for `@{username}`...\n"
+        "Please wait while we run a full compliance check.",
         parse_mode="Markdown"
     )
 
@@ -321,7 +321,7 @@ async def run_deep_analysis(
     )
 
     # 3. AI deep analysis (unique per channel)
-    await update.message.reply_text("🤖 AI is analyzing your channel...")
+    await update.message.reply_text("🔍 *AdApprovalPilot AI* is analyzing your channel/group/bot...", parse_mode="Markdown")
 
     ai_analysis = analyze_channel(
         name               = chat_data["name"],
@@ -401,7 +401,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "❌ *Destination Quality* rejection\n"
         "⏳ Ads *stuck in review*\n"
         "📉 *Low CPM* performance\n\n"
-        "Powered by *Gemini AI* for unique, expert-level analysis.\n\n"
+        "Powered by *AdApprovalPilot AI* for expert-level, unique analysis.\n\n"
         "🚀 Request access below to get started.",
         parse_mode="Markdown",
         reply_markup=main_menu_keyboard()
@@ -423,7 +423,8 @@ async def fix_description_handler(update: Update, context: ContextTypes.DEFAULT_
 
     await context.bot.send_message(
         chat_id=query.from_user.id,
-        text="🤖 AI is generating a unique, compliant description..."
+        text="🔍 *AdApprovalPilot AI* is generating a unique, compliant description...",
+            parse_mode="Markdown"
     )
 
     result = fix_channel_description(name, username, description, entity_type)
@@ -461,7 +462,8 @@ async def fix_name_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await context.bot.send_message(
         chat_id=query.from_user.id,
-        text="🤖 AI is generating compliant name alternatives..."
+        text="🔍 *AdApprovalPilot AI* is generating compliant name alternatives...",
+            parse_mode="Markdown"
     )
 
     result = fix_channel_name(name, username, entity_type, issues)
@@ -809,8 +811,8 @@ async def analyse_targets_receive(update: Update, context: ContextTypes.DEFAULT_
         await update.message.reply_text("⚠️ No links found. Send at least one.")
         return WAIT_TARGET_LINKS
 
-    await update.message.reply_text(f"🔍 AI analysing {len(lines)} target(s)...")
-    report = "📡 *Target Channel Risk Report*\n_(AI-powered, real data only)_\n\n"
+    await update.message.reply_text(f"🔍 *AdApprovalPilot AI* is analysing {len(lines)} target channel(s)...", parse_mode="Markdown")
+    report = "📡 *Target Channel Risk Report*\n_(AdApprovalPilot AI — real data analysis)_\n\n"
 
     for link in lines:
         username = extract_username(link)
@@ -884,7 +886,7 @@ async def ad_text_analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Invalid link.", parse_mode="Markdown")
         return WAIT_AD_LINK
 
-    await update.message.reply_text("🤖 Fetching channel data and generating unique ad copies...")
+    await update.message.reply_text("🔍 *AdApprovalPilot AI* is fetching channel data and generating unique ad copies...", parse_mode="Markdown")
     chat_data   = await fetch_chat_data(context.bot, username)
     description = chat_data.get("description") if chat_data["success"] else None
 
@@ -913,7 +915,7 @@ async def ad_text_analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
     copies = generate_ad_copies(name, username, entity_type, description)
 
     await update.message.reply_text(
-        f"✍️ *AI Ad Copies for `@{username}`*\n_(Unique, based on real channel data)_\n\n{copies}\n\n"
+        f"✍️ *Ad Copies for `@{username}`*\n_(AdApprovalPilot AI — based on real channel data)_\n\n{copies}\n\n"
         "📋 A/B test all 3. Never add policy-risky phrases.",
         parse_mode="Markdown", reply_markup=main_menu_keyboard()
     )
@@ -927,11 +929,11 @@ async def ad_text_niche_details(update: Update, context: ContextTypes.DEFAULT_TY
     name        = context.user_data.get("ad_name", username)
     entity_type = context.user_data.get("ad_entity_type", "channel")
 
-    await update.message.reply_text("🤖 Generating unique ad copies based on your niche...")
+    await update.message.reply_text("🔍 *AdApprovalPilot AI* is generating unique ad copies based on your niche...", parse_mode="Markdown")
     copies = generate_ad_copies(name, username, entity_type, niche=niche)
 
     await update.message.reply_text(
-        f"✍️ *AI Ad Copies for `@{username}`*\n_(Based on niche: {niche})_\n\n{copies}",
+        f"✍️ *Ad Copies for `@{username}`*\n_(AdApprovalPilot AI — based on niche: {niche})_\n\n{copies}",
         parse_mode="Markdown", reply_markup=main_menu_keyboard()
     )
     return ConversationHandler.END
