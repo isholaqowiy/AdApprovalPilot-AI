@@ -320,27 +320,28 @@ async def run_deep_analysis(
         violations,
     )
 
-    # 3. AI deep analysis (unique per channel)
+    # 3. AI deep analysis (unique per channel) — run in executor to avoid blocking
     await update.message.reply_text("🔍 *AdApprovalPilot AI* is analyzing your channel/group/bot...", parse_mode="Markdown")
 
-    ai_analysis = analyze_channel(
+    loop        = asyncio.get_event_loop()
+    ai_analysis = await loop.run_in_executor(None, lambda: analyze_channel(
         name               = chat_data["name"],
         username           = username,
         description        = description,
         member_count       = chat_data["member_count"],
         entity_type        = entity_type,
         detected_violations= violations,
-    )
+    ))
 
-    # 4. AI root cause diagnosis
-    ai_diagnosis = diagnose_rejection(
+    # 4. AI root cause diagnosis — also run in executor
+    ai_diagnosis = await loop.run_in_executor(None, lambda: diagnose_rejection(
         name              = chat_data["name"],
         username          = username,
         description       = description,
         member_count      = chat_data["member_count"],
         profile_issues    = [desc for _, desc, _ in profile_issues],
         content_violations= violations,
-    )
+    ))
 
     # 5. Build structured report header (real data)
     emoji  = {"channel": "📊", "group": "👥", "bot": "🤖"}.get(entity_type, "🔍")
@@ -361,7 +362,7 @@ async def run_deep_analysis(
             "➡️ Grow to 1,000–5,000+ before running ads.\n\n"
         )
 
-    report += f"🤖 *AI Analysis:*\n{ai_analysis}\n\n"
+    report += f"📋 *AdApprovalPilot AI Analysis:*\n{ai_analysis}\n\n"
     report += f"━━━━━━━━━━━━━━━━━━\n\n"
     report += f"🩺 *Root Cause Diagnosis:*\n{ai_diagnosis}\n\n"
     report += "━━━━━━━━━━━━━━━━━━\n"
@@ -427,7 +428,8 @@ async def fix_description_handler(update: Update, context: ContextTypes.DEFAULT_
             parse_mode="Markdown"
     )
 
-    result = fix_channel_description(name, username, description, entity_type)
+    loop   = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, lambda: fix_channel_description(name, username, description, entity_type))
 
     if result["compliant"]:
         await context.bot.send_message(
@@ -466,7 +468,8 @@ async def fix_name_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
     )
 
-    result = fix_channel_name(name, username, entity_type, issues)
+    loop   = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, lambda: fix_channel_name(name, username, entity_type, issues))
 
     if result["compliant"]:
         await context.bot.send_message(
@@ -832,13 +835,14 @@ async def analyse_targets_receive(update: Update, context: ContextTypes.DEFAULT_
         violations = detect_violations(chat_data.get("description") or "")
         subs       = chat_data["member_count"]
 
-        ai_result  = analyze_target_channel(
+        _loop      = asyncio.get_event_loop()
+        ai_result  = await _loop.run_in_executor(None, lambda: analyze_target_channel(
             name               = chat_data["name"],
             username           = username,
             description        = chat_data.get("description") or "",
             member_count       = subs,
             detected_violations= violations,
-        )
+        ))
 
         report += f"🎯 *@{username}*  |  {chat_data['name']}\n"
         if subs is not None:
@@ -912,7 +916,8 @@ async def ad_text_analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "channel"
     )
     name   = chat_data.get("name", username) if chat_data["success"] else username
-    copies = generate_ad_copies(name, username, entity_type, description)
+    _loop  = asyncio.get_event_loop()
+    copies = await _loop.run_in_executor(None, lambda: generate_ad_copies(name, username, entity_type, description))
 
     await update.message.reply_text(
         f"✍️ *Ad Copies for `@{username}`*\n_(AdApprovalPilot AI — based on real channel data)_\n\n{copies}\n\n"
@@ -930,7 +935,8 @@ async def ad_text_niche_details(update: Update, context: ContextTypes.DEFAULT_TY
     entity_type = context.user_data.get("ad_entity_type", "channel")
 
     await update.message.reply_text("🔍 *AdApprovalPilot AI* is generating unique ad copies based on your niche...", parse_mode="Markdown")
-    copies = generate_ad_copies(name, username, entity_type, niche=niche)
+    _loop  = asyncio.get_event_loop()
+    copies = await _loop.run_in_executor(None, lambda: generate_ad_copies(name, username, entity_type, niche=niche))
 
     await update.message.reply_text(
         f"✍️ *Ad Copies for `@{username}`*\n_(AdApprovalPilot AI — based on niche: {niche})_\n\n{copies}",
@@ -1186,10 +1192,17 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 flask_app = Flask(__name__)
 ptb_app   = Application.builder().token(TOKEN).build()
 
+# ── Persistent event loop ──
+# Using asyncio.run() in the webhook route closes the loop after each request,
+# which causes "Event loop is closed" errors. We create one loop and reuse it.
+_loop = asyncio.new_event_loop()
+asyncio.set_event_loop(_loop)
+
 @flask_app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), ptb_app.bot)
-    asyncio.run(ptb_app.process_update(update))
+    # Use the persistent loop instead of asyncio.run() which closes the loop after each call
+    _loop.run_until_complete(ptb_app.process_update(update))
     return "OK", 200
 
 @flask_app.route("/", methods=["GET"])
@@ -1295,7 +1308,7 @@ async def setup():
     logger.info(f"Webhook set: {WEBHOOK_URL}/{TOKEN}")
 
 init_db()
-asyncio.run(setup())
+_loop.run_until_complete(setup())
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
