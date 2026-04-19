@@ -1,61 +1,134 @@
 """
-ai_engine.py
-Gemini AI integration for AdApprovalPilot AI.
-Uses gemini-1.5-flash (stable, free-tier supported model).
-All outputs branded as AdApprovalPilot AI — never mentions AI or Gemini.
+ai_engine.py — AdApprovalPilot AI
+Production-grade AI engine.
+Primary: Gemini 1.5 Flash
+Fallback: Intelligent rule-based system (always responds)
+Branding: AdApprovalPilot AI only — never mentions Gemini, Claude, or AI
 """
 import os
+import re
+import random
 import logging
 import google.generativeai as genai
+from google.generativeai.types import GenerationConfig
 
 logger = logging.getLogger(__name__)
 
-# ── Configure Gemini ──
-_api_key = os.getenv("GEMINI_API_KEY", "")
-if _api_key:
-    genai.configure(api_key=_api_key)
+# ─────────────────────────────────────────────
+# GEMINI SETUP
+# ─────────────────────────────────────────────
+_GEMINI_KEY = os.getenv("GEMINI_API_KEY", "")
+
+if _GEMINI_KEY:
+    genai.configure(api_key=_GEMINI_KEY)
+    logger.info("Gemini API configured successfully")
 else:
-    logger.warning("GEMINI_API_KEY not set — AI features will use fallback mode")
+    logger.warning("GEMINI_API_KEY not found in environment — rule-based fallback will be used")
 
-# Use gemini-1.5-flash: stable, fast, free-tier supported
-GEMINI_MODEL = "gemini-1.5-flash"
+# Generation config for unique, varied outputs
+_GEN_CONFIG = GenerationConfig(
+    temperature=0.9,
+    top_p=0.95,
+    max_output_tokens=1024,
+)
+
+_MODELS = ["gemini-1.5-flash", "gemini-1.5-pro"]
 
 
-def _call_gemini(prompt: str, fallback: str = None) -> str:
+def _call_gemini(prompt: str) -> str | None:
     """
-    Core Gemini call with robust error handling.
-    Tries gemini-1.5-flash first, falls back to gemini-1.5-pro if needed.
-    Returns fallback message only if both fail.
+    Attempt Gemini call. Returns text on success, None on any failure.
+    Tries flash first, then pro.
     """
-    if not _api_key:
-        return fallback or _default_fallback()
+    if not _GEMINI_KEY:
+        return None
 
-    models_to_try = ["gemini-1.5-flash", "gemini-1.5-pro"]
-
-    for model_name in models_to_try:
+    for model_name in _MODELS:
         try:
-            model    = genai.GenerativeModel(model_name)
+            model    = genai.GenerativeModel(
+                model_name,
+                generation_config=_GEN_CONFIG,
+            )
             response = model.generate_content(prompt)
-            if response and response.text:
-                return response.text.strip()
+            text     = response.text.strip() if response and response.text else None
+            if text and len(text) > 20:
+                logger.info(f"Gemini ({model_name}) responded successfully")
+                return text
         except Exception as e:
-            logger.warning(f"Gemini model {model_name} failed: {e}")
+            logger.warning(f"Gemini {model_name} failed: {e}")
             continue
 
-    # Both models failed — return provided fallback or generate rule-based one
-    logger.error("All Gemini models failed")
-    return fallback or _default_fallback()
+    logger.error("All Gemini models failed — using rule-based fallback")
+    return None
 
 
-def _default_fallback() -> str:
+def _processing_error_msg() -> str:
+    """Never expose technical errors to users."""
     return (
-        "AdApprovalPilot AI could not complete the analysis at this moment. "
-        "Please try again in a few seconds."
+        "AdApprovalPilot AI is processing your request. "
+        "Please try again shortly."
     )
 
 
 # ─────────────────────────────────────────────
-# CHANNEL / GROUP / BOT DEEP ANALYSIS
+# REWRITE MAP (used in rule-based fallback)
+# ─────────────────────────────────────────────
+REWRITE_MAP = {
+    "earn fast":           "grow your expertise quickly",
+    "make money":          "build financial value",
+    "get rich":            "achieve your financial goals",
+    "guaranteed":          "proven",
+    "guarantee":           "trusted",
+    "100%":                "highly effective",
+    "no risk":             "beginner-friendly",
+    "risk free":           "accessible",
+    "free money":          "free resources",
+    "instant profit":      "measurable results",
+    "passive income":      "consistent returns",
+    "work from home":      "remote opportunities",
+    "double your":         "grow your",
+    "click now":           "learn more",
+    "act now":             "get started",
+    "limited time":        "exclusive",
+    "join now":            "join us",
+    "don't miss":          "explore",
+    "airdrop":             "token distribution",
+    "fast cash":           "quick results",
+    "easy money":          "accessible opportunity",
+    "moon":                "growth potential",
+    "pump":                "market movement",
+    "signal":              "market insight",
+    "crypto signal":       "market analysis",
+    "forex signal":        "currency analysis",
+    "financial freedom":   "financial independence",
+    "passive income":      "recurring value",
+    "secret method":       "proven strategy",
+    "hack":                "smart approach",
+    "unlimited":           "extensive",
+    "100x":                "high-growth",
+}
+
+# ─────────────────────────────────────────────
+# TONE VARIANTS (ensures uniqueness across calls)
+# ─────────────────────────────────────────────
+_TONES = [
+    "professional and direct",
+    "authoritative and concise",
+    "informative and clear",
+    "analytical and precise",
+    "expert and trustworthy",
+]
+
+_COPY_ANGLES = [
+    ("Educational", "Community-Focused", "Value-Driven"),
+    ("Informational", "Trust-Building", "Action-Oriented"),
+    ("Expert", "Engaging", "Results-Focused"),
+    ("Insightful", "Professional", "Growth-Oriented"),
+]
+
+
+# ─────────────────────────────────────────────
+# 1. CHANNEL / GROUP / BOT DEEP ANALYSIS
 # ─────────────────────────────────────────────
 def analyze_channel(
     name: str,
@@ -65,268 +138,67 @@ def analyze_channel(
     entity_type: str,
     detected_violations: dict,
 ) -> str:
+    subs = f"{member_count:,}" if member_count is not None else "not available"
+    tone = random.choice(_TONES)
+
     violations_text = ""
     if detected_violations:
         for cat, phrases in detected_violations.items():
             violations_text += f"  - {cat}: {', '.join(str(p) for p in phrases)}\n"
     else:
-        violations_text = "  None detected in available data."
-
-    subs_text = f"{member_count:,}" if member_count is not None else "Unknown"
+        violations_text = "  No violations detected in available data."
 
     prompt = f"""
-You are AdApprovalPilot AI, a senior Telegram Ads compliance expert.
+You are a senior Telegram Ads compliance specialist at AdApprovalPilot AI.
 
-Analyze this Telegram {entity_type} for Telegram Ads policy compliance:
+Analyze this Telegram {entity_type} for Telegram Ads policy compliance.
+Use a {tone} tone. This analysis must be unique and specific to this exact channel.
 
+--- CHANNEL DATA ---
 Name: {name}
 Username: @{username}
-Description: {description or "Not set — empty description"}
-Subscribers/Members: {subs_text}
+Description: {description or "NOT SET — empty description"}
+Subscribers: {subs}
 Detected Policy Signals:
 {violations_text}
+--------------------
 
-Your task:
-1. Diagnose the EXACT reasons this {entity_type} may face ad rejection
-2. Explain each issue clearly — be specific to THIS channel, not generic
-3. State the overall risk level: HIGH RISK / MEDIUM RISK / LOW RISK
-4. Give 3-5 concrete, actionable recommendations tailored to this specific {entity_type}
-5. If any section is already compliant, say so explicitly
+Your analysis MUST include:
 
-Rules:
-- Base analysis ONLY on the data provided above
-- Do NOT invent or assume content not shown
-- Write in professional, human-like tone
-- Output must be unique to this specific channel
-- Format with clear sections: Risk Assessment, Issues Found, Root Cause, Recommendations
-- Do NOT mention Gemini, Google, or AI in your response
-- Refer to yourself only as AdApprovalPilot AI if needed
-"""
-    fallback = (
-        f"📊 *AdApprovalPilot AI Analysis for @{username}*\n\n"
-        f"Based on available data:\n\n"
-        + _rule_based_analysis(name, username, description, member_count, detected_violations, entity_type)
-    )
-    return _call_gemini(prompt, fallback)
+1. RISK LEVEL: State clearly — HIGH RISK / MEDIUM RISK / LOW RISK
+   Justify with specific data points from above.
 
+2. ROOT CAUSE: Explain in 2-3 sentences exactly WHY ads would be rejected.
+   Be specific to THIS channel. Not generic advice.
 
-# ─────────────────────────────────────────────
-# DESCRIPTION FIXER
-# ─────────────────────────────────────────────
-def fix_description(
-    name: str,
-    username: str,
-    current_description: str,
-    entity_type: str,
-    niche: str = "",
-) -> str:
-    if not current_description and not niche:
-        prompt = f"""
-You are AdApprovalPilot AI, a Telegram Ads compliance copywriter.
+3. ISSUES FOUND: List each problem with a brief explanation of WHY it matters for Telegram Ads.
+   If a section is fully compliant, say: "✅ [Section] — No issues detected."
 
-Write a professional, policy-compliant description for this Telegram {entity_type}:
-Name: {name}
-Username: @{username}
+4. PRIORITY FIXES: List 3-5 actions in priority order, most urgent first.
+   Each fix must be specific to the niche of this channel.
+
+5. APPROVAL IMPACT: For each fix, briefly state how it improves approval chances.
 
 Rules:
-- Maximum 255 characters
-- No spam, no hype, no guarantees
-- Clear niche-specific language based on the channel name
-- Professional tone
-- Unique — not a generic template
-- Do NOT mention AI, Gemini, or Google
-
-Return ONLY the new description text. No explanation, no formatting.
+- Base ONLY on data provided above
+- Never invent posts or subscribers
+- If description is empty, flag it as a primary rejection risk
+- Use plain, human-like English
+- Do NOT mention Gemini, Claude, or AI anywhere
+- Do NOT use generic advice that could apply to any channel
+- Your output for @{username} must differ from any other channel analysis
 """
-    else:
-        prompt = f"""
-You are AdApprovalPilot AI, a Telegram Ads compliance copywriter.
 
-Rewrite this Telegram {entity_type} description to be fully compliant with Telegram Ads policies:
+    result = _call_gemini(prompt)
+    if result:
+        return result
 
-Channel Name: {name}
-Username: @{username}
-Current Description: {current_description or "Empty — create from scratch"}
-Niche/Context: {niche or "Infer from channel name"}
-
-Requirements:
-- Maximum 255 characters
-- Remove ALL policy violations (guarantees, hype, spam, misleading claims)
-- Keep the original meaning and niche intent
-- Professional, non-spammy tone
-- Unique to this channel — not a generic template
-- If the current description is already compliant, respond with exactly:
-  COMPLIANT: No changes needed.
-- Do NOT mention AI, Gemini, or Google
-
-Return ONLY the rewritten description. No explanation.
-"""
-    fallback = _rule_based_description_fix(name, username, current_description, entity_type, niche)
-    return _call_gemini(prompt, fallback)
+    # Rule-based fallback — always produces a useful, specific response
+    return _fallback_channel_analysis(name, username, description, member_count, detected_violations, entity_type)
 
 
 # ─────────────────────────────────────────────
-# NAME FIXER
-# ─────────────────────────────────────────────
-def fix_name(
-    current_name: str,
-    username: str,
-    entity_type: str,
-    issues: list,
-) -> str:
-    issues_text = "\n".join(f"  - {i}" for i in issues) if issues else "  No specific issues flagged."
-    prompt = f"""
-You are AdApprovalPilot AI, a Telegram Ads compliance expert and brand naming specialist.
-
-Suggest a better name for this Telegram {entity_type}:
-
-Current Name: {current_name}
-Username: @{username}
-Detected Issues:
-{issues_text}
-
-Requirements:
-- Must comply with Telegram Ads policies
-- Must reflect the channel's actual niche (infer from username/name)
-- Professional and trustworthy
-- Not spammy, not misleading, not hype-driven
-- Give exactly 3 name options, each on a new line
-- If the current name is already compliant, respond with exactly:
-  COMPLIANT: Current name meets policy requirements.
-- Do NOT mention AI, Gemini, or Google
-
-Return ONLY the 3 name suggestions or the compliant message. No explanation.
-"""
-    fallback = _rule_based_name_fix(current_name, username, entity_type)
-    return _call_gemini(prompt, fallback)
-
-
-# ─────────────────────────────────────────────
-# POST REWRITER
-# ─────────────────────────────────────────────
-def rewrite_post(
-    post_text: str,
-    channel_name: str,
-    violation_categories: list,
-) -> str:
-    violations_text = ", ".join(violation_categories) if violation_categories else "general policy concerns"
-    prompt = f"""
-You are AdApprovalPilot AI, a Telegram Ads compliance editor.
-
-Rewrite this post from the Telegram channel "{channel_name}" to comply with Telegram Ads policies.
-
-Original Post:
-{post_text}
-
-Detected Issues: {violations_text}
-
-Rules:
-- Keep the original meaning and intent
-- Remove ALL policy violations
-- Match the original language (if Arabic rewrite in Arabic, if English keep English)
-- Do NOT change factual information
-- Keep similar length to original
-- If the post is already compliant, respond with exactly:
-  COMPLIANT: This post meets policy requirements.
-- Do NOT mention AI, Gemini, or Google
-
-Return ONLY the rewritten post. No explanation.
-"""
-    fallback = _rule_based_post_rewrite(post_text, violation_categories)
-    return _call_gemini(prompt, fallback)
-
-
-# ─────────────────────────────────────────────
-# AD COPY GENERATOR
-# ─────────────────────────────────────────────
-def generate_ad_copies(
-    name: str,
-    username: str,
-    entity_type: str,
-    description: str = None,
-    niche: str = None,
-) -> str:
-    context = description or niche or f"A Telegram {entity_type} focused on {name}"
-    prompt = f"""
-You are AdApprovalPilot AI, a Telegram Ads copywriter specializing in policy-compliant content.
-
-Generate 3 completely unique, policy-compliant Telegram ad copies for:
-
-{entity_type.capitalize()} Name: {name}
-Username: @{username}
-Context/Description: {context}
-
-Requirements for EACH copy:
-- Fully compliant with Telegram Ads content policies
-- No spam, no guarantees, no hype language
-- Compelling, professional, tailored to THIS channel's niche
-- Different angle for each copy: (1) informational, (2) community-focused, (3) value-driven
-- Each copy: 1-2 sentences maximum with a clear CTA
-- Must be UNIQUE to this specific channel
-- Do NOT mention AI, Gemini, or Google
-
-Format exactly like this:
-📢 Copy 1 — Informational:
-[text]
-
-📢 Copy 2 — Community:
-[text]
-
-📢 Copy 3 — Value:
-[text]
-"""
-    fallback = _rule_based_ad_copies(name, username, entity_type, context)
-    return _call_gemini(prompt, fallback)
-
-
-# ─────────────────────────────────────────────
-# TARGET CHANNEL RISK ANALYSIS
-# ─────────────────────────────────────────────
-def analyze_target_channel(
-    name: str,
-    username: str,
-    description: str,
-    member_count,
-    detected_violations: dict,
-) -> str:
-    violations_text = ""
-    if detected_violations:
-        for cat, phrases in detected_violations.items():
-            violations_text += f"  - {cat}: {', '.join(str(p) for p in phrases)}\n"
-    else:
-        violations_text = "  None detected from available data."
-
-    subs = f"{member_count:,}" if member_count is not None else "Unknown"
-
-    prompt = f"""
-You are AdApprovalPilot AI, a Telegram Ads placement specialist.
-
-Evaluate this target channel for ad placement risk:
-
-Name: {name}
-Username: @{username}
-Description: {description or "Not set"}
-Subscribers: {subs}
-Detected Signals:
-{violations_text}
-
-Provide:
-1. Risk Level: HIGH RISK / MEDIUM RISK / LOW RISK with a one-line justification
-2. Specific reasons this channel could cause ad rejection (based ONLY on provided data)
-3. Whether it is suitable for Telegram Ads placement
-4. 2-3 specific, actionable recommendations if improvements are needed
-
-Base assessment ONLY on data provided.
-Be specific to this channel — not generic advice.
-Do NOT mention AI, Gemini, or Google.
-Format: Risk Assessment → Reasons → Recommendation
-"""
-    fallback = _rule_based_target_analysis(name, username, description, member_count, detected_violations)
-    return _call_gemini(prompt, fallback)
-
-
-# ─────────────────────────────────────────────
-# ROOT CAUSE DIAGNOSIS
+# 2. ROOT CAUSE DIAGNOSIS
 # ─────────────────────────────────────────────
 def diagnose_rejection(
     name: str,
@@ -336,219 +208,509 @@ def diagnose_rejection(
     profile_issues: list,
     content_violations: dict,
 ) -> str:
-    profile_text = "\n".join(f"  - {i}" for i in profile_issues) if profile_issues else "  None"
-    violations_text = ""
+    subs  = f"{member_count:,}" if member_count is not None else "unknown"
+    tone  = random.choice(_TONES)
+    p_text = "\n".join(f"  - {i}" for i in profile_issues) if profile_issues else "  None detected"
+    v_text = ""
     if content_violations:
         for cat, phrases in content_violations.items():
-            violations_text += f"  - {cat}: {', '.join(str(p) for p in phrases)}\n"
+            v_text += f"  - {cat}: {', '.join(str(p) for p in phrases)}\n"
     else:
-        violations_text = "  None detected"
-
-    subs = f"{member_count:,}" if member_count is not None else "Unknown"
+        v_text = "  None detected"
 
     prompt = f"""
-You are AdApprovalPilot AI, a senior Telegram Ads policy specialist.
+You are AdApprovalPilot AI's head compliance diagnostician.
+Use a {tone} tone. Write a unique rejection diagnosis for @{username}.
 
-A Telegram advertiser's ads keep getting rejected. Diagnose exactly WHY based on this data:
-
-Channel Name: {name}
-Username: @{username}
-Description: {description or "Not set"}
+--- DATA ---
+Channel: {name} (@{username})
 Subscribers: {subs}
+Description: {description or "NOT SET"}
 Profile Issues:
-{profile_text}
-Content Policy Signals:
+{p_text}
+Content Violations:
+{v_text}
+-----------
+
+Write a clear, structured rejection diagnosis:
+
+PRIMARY REJECTION REASON:
+State the single most likely reason ads are being rejected for THIS channel.
+
+CONTRIBUTING FACTORS:
+List secondary issues that compound the primary problem.
+
+HOW THEY COMBINE:
+Explain in 2-3 sentences how these factors together reduce Telegram's approval confidence.
+
+PRIORITY ACTION PLAN:
+List fixes in order of impact. Start with the one that will most improve approval rate.
+
+Tone: Expert compliance consultant speaking directly to a client.
+Be specific to @{username} — not generic advice.
+Do NOT mention Gemini, Claude, or AI.
+"""
+
+    result = _call_gemini(prompt)
+    if result:
+        return result
+
+    return _fallback_diagnosis(name, username, description, member_count, profile_issues, content_violations)
+
+
+# ─────────────────────────────────────────────
+# 3. DESCRIPTION FIXER
+# ─────────────────────────────────────────────
+def fix_description(
+    name: str,
+    username: str,
+    current_description: str,
+    entity_type: str,
+    niche: str = "",
+) -> str:
+    context = niche or current_description or name
+    has_desc = bool(current_description and current_description.strip())
+
+    if has_desc:
+        prompt = f"""
+You are AdApprovalPilot AI's compliance copywriter.
+
+TASK: Minimally rewrite this Telegram {entity_type} description to comply with Telegram Ads policies.
+IMPORTANT: Only fix the non-compliant parts. Preserve as much of the original as possible.
+
+Channel: {name} (@{username})
+Current Description: {current_description}
+Niche Context: {context}
+
+Rules:
+- Maximum 255 characters
+- Only edit phrases that violate policy (spam, hype, guarantees, misleading claims)
+- Keep original language and tone where compliant
+- Do NOT replace compliant sections with generic text
+- If already fully compliant, respond with EXACTLY: COMPLIANT: No changes needed.
+- Do NOT mention Gemini, Claude, or AI
+- Output must be specific to the niche of {name}
+
+Return ONLY the rewritten description. No explanation. No formatting.
+"""
+    else:
+        prompt = f"""
+You are AdApprovalPilot AI's compliance copywriter.
+
+TASK: Write a professional, policy-compliant description for this Telegram {entity_type}.
+The current description is EMPTY — create one from scratch based on the channel name.
+
+Channel: {name} (@{username})
+Niche: {context}
+
+Rules:
+- Maximum 255 characters
+- No spam, no hype, no guarantees, no misleading claims
+- Match the niche of {name} precisely
+- Professional, trustworthy tone
+- Completely unique — not a generic template
+- Do NOT mention Gemini, Claude, or AI
+
+Return ONLY the description text. No explanation. No formatting.
+"""
+
+    result = _call_gemini(prompt)
+    if result:
+        return result
+
+    return _fallback_description(name, username, current_description, entity_type, context)
+
+
+# ─────────────────────────────────────────────
+# 4. NAME FIXER
+# ─────────────────────────────────────────────
+def fix_name(
+    current_name: str,
+    username: str,
+    entity_type: str,
+    issues: list,
+) -> str:
+    issues_text = "\n".join(f"  - {i}" for i in issues) if issues else "  No specific issues"
+
+    prompt = f"""
+You are AdApprovalPilot AI's naming specialist.
+
+Suggest 3 improved names for this Telegram {entity_type}.
+
+Current Name: {current_name}
+Username: @{username}
+Detected Issues:
+{issues_text}
+
+Requirements:
+- Names must comply with Telegram Ads policies
+- Must reflect the ACTUAL niche of @{username} (infer from the username)
+- Professional, trustworthy, not spammy or misleading
+- Each name must be meaningfully different from the others
+- If the current name is already fully compliant, respond with EXACTLY:
+  COMPLIANT: Current name meets policy requirements.
+- Do NOT mention Gemini, Claude, or AI
+
+Format:
+1. [Name] — [one-line reason it works]
+2. [Name] — [one-line reason it works]
+3. [Name] — [one-line reason it works]
+"""
+
+    result = _call_gemini(prompt)
+    if result:
+        return result
+
+    return _fallback_name_fix(current_name, username, entity_type)
+
+
+# ─────────────────────────────────────────────
+# 5. POST REWRITER
+# ─────────────────────────────────────────────
+def rewrite_post(
+    post_text: str,
+    channel_name: str,
+    violation_categories: list,
+) -> str:
+    violations_text = ", ".join(violation_categories) if violation_categories else "general policy concerns"
+
+    prompt = f"""
+You are AdApprovalPilot AI's content compliance editor.
+
+TASK: Minimally rewrite this post to comply with Telegram Ads policies.
+IMPORTANT: Only fix non-compliant phrases. Keep original meaning and language.
+
+Channel: {channel_name}
+Detected Issues: {violations_text}
+
+Original Post:
+{post_text}
+
+Rules:
+- Preserve the original language (Arabic → Arabic, English → English)
+- Only modify the specific phrases that violate policy
+- Do NOT rewrite the entire post if only part is non-compliant
+- Keep the same tone and intent as the original
+- If already fully compliant, respond with EXACTLY:
+  COMPLIANT: This post meets policy requirements.
+- Do NOT mention Gemini, Claude, or AI
+
+Return ONLY the rewritten post. No explanation.
+"""
+
+    result = _call_gemini(prompt)
+    if result:
+        return result
+
+    return _fallback_post_rewrite(post_text, violation_categories)
+
+
+# ─────────────────────────────────────────────
+# 6. AD COPY GENERATOR
+# ─────────────────────────────────────────────
+def generate_ad_copies(
+    name: str,
+    username: str,
+    entity_type: str,
+    description: str = None,
+    niche: str = None,
+) -> str:
+    context = description or niche or f"A Telegram {entity_type} focused on topics related to {name}"
+    angles  = random.choice(_COPY_ANGLES)
+    tone    = random.choice(_TONES)
+
+    prompt = f"""
+You are AdApprovalPilot AI's ad copywriter specializing in Telegram Ads policy compliance.
+
+Generate 3 unique, policy-compliant Telegram ad copies for:
+
+{entity_type.capitalize()} Name: {name}
+Username: @{username}
+Channel Context: {context}
+
+Use a {tone} tone. Write 3 copies with these angles: {angles[0]}, {angles[1]}, {angles[2]}.
+
+Requirements for EACH copy:
+- Fully compliant with Telegram Ads content policies
+- No spam, no guarantees, no hype, no misleading claims
+- Tailored specifically to the niche of @{username}
+- Each copy takes a different angle (see angles above)
+- 1-2 sentences maximum with a natural CTA
+- Must be completely unique to THIS channel
+- Do NOT mention Gemini, Claude, or AI
+
+Format exactly:
+📢 Copy 1 — {angles[0]}:
+[text]
+
+📢 Copy 2 — {angles[1]}:
+[text]
+
+📢 Copy 3 — {angles[2]}:
+[text]
+"""
+
+    result = _call_gemini(prompt)
+    if result:
+        return result
+
+    return _fallback_ad_copies(name, username, entity_type, context, angles)
+
+
+# ─────────────────────────────────────────────
+# 7. TARGET CHANNEL ANALYSIS
+# ─────────────────────────────────────────────
+def analyze_target_channel(
+    name: str,
+    username: str,
+    description: str,
+    member_count,
+    detected_violations: dict,
+) -> str:
+    subs          = f"{member_count:,}" if member_count is not None else "unknown"
+    violations_text = ""
+    if detected_violations:
+        for cat, phrases in detected_violations.items():
+            violations_text += f"  - {cat}: {', '.join(str(p) for p in phrases)}\n"
+    else:
+        violations_text = "  None detected from available data."
+
+    prompt = f"""
+You are AdApprovalPilot AI's ad placement specialist.
+
+Evaluate this Telegram channel as a target for ad placement:
+
+Name: {name} (@{username})
+Subscribers: {subs}
+Description: {description or "NOT SET"}
+Detected Signals:
 {violations_text}
 
-Write a professional diagnosis explaining:
-1. The most likely PRIMARY reason for rejection
-2. Secondary contributing factors
-3. How these factors combine to reduce Telegram's approval confidence
-4. Priority order for fixing issues (most critical first)
+Provide a structured evaluation:
 
-Write as a real compliance consultant explaining to a client.
-Be specific to THIS channel.
-Use plain English, not jargon.
-Do NOT mention AI, Gemini, or Google.
+RISK LEVEL: HIGH RISK / MEDIUM RISK / LOW RISK
+[One sentence justification based on data above]
+
+PLACEMENT ISSUES:
+[List specific reasons this channel could cause ad rejection — based ONLY on data provided]
+
+SUITABILITY:
+[State whether this channel is suitable, conditionally suitable, or not suitable for Telegram Ads]
+
+RECOMMENDATIONS:
+[2-3 specific, actionable improvements for this exact channel]
+
+Base assessment ONLY on provided data. Be specific to @{username}.
+Do NOT mention Gemini, Claude, or AI.
 """
-    fallback = _rule_based_diagnosis(name, username, description, member_count, profile_issues, content_violations)
-    return _call_gemini(prompt, fallback)
+
+    result = _call_gemini(prompt)
+    if result:
+        return result
+
+    return _fallback_target_analysis(name, username, description, member_count, detected_violations)
 
 
 # ─────────────────────────────────────────────
-# RULE-BASED FALLBACKS (used when Gemini fails)
-# These ensure the bot ALWAYS responds with useful content
+# RULE-BASED FALLBACKS
+# Always produce useful, specific output — never fail silently
 # ─────────────────────────────────────────────
 
-REWRITE_MAP = {
-    "earn fast": "grow your expertise quickly",
-    "make money": "build financial value",
-    "get rich": "achieve your goals",
-    "guaranteed": "proven",
-    "guarantee": "trusted",
-    "100%": "highly effective",
-    "no risk": "beginner-friendly",
-    "risk free": "accessible",
-    "free money": "free resources",
-    "instant profit": "measurable results",
-    "passive income": "consistent returns",
-    "work from home": "remote opportunities",
-    "double your": "grow your",
-    "click now": "learn more",
-    "act now": "get started",
-    "limited time": "exclusive",
-    "join now": "join us",
-    "don't miss": "explore",
-    "airdrop": "token distribution",
-    "fast cash": "quick results",
-    "easy money": "accessible opportunity",
-    "moon": "growth potential",
-    "pump": "market movement",
-    "signal": "market insight",
-    "crypto signal": "market analysis",
-}
+def _fallback_channel_analysis(name, username, description, member_count, violations, entity_type) -> str:
+    subs   = member_count or 0
+    issues = []
+    recs   = []
+
+    if subs < 500:
+        issues.append(f"🔴 Very low audience ({subs:,} subscribers) — significantly below Telegram's trust threshold for ad approval")
+        recs.append("Priority 1: Grow to at least 1,000 subscribers before running ads")
+    elif subs < 1000:
+        issues.append(f"🟡 Low subscriber base ({subs:,}) — below the 1,000-subscriber trust minimum for Telegram Ads")
+        recs.append("Priority 1: Grow to 1,000+ subscribers to improve trust score")
+
+    if not description:
+        issues.append("🔴 No description set — empty descriptions are a primary rejection trigger in Telegram's review system")
+        recs.append("Priority 2: Add a clear, niche-specific description immediately")
+    else:
+        for cat, phrases in violations.items():
+            issues.append(f"🟡 Policy signal in description — {cat}: detected phrase(s): `{', '.join(str(p) for p in phrases[:3])}`")
+            recs.append(f"Remove {cat}-related phrases from your description")
+
+    risk = "🔴 HIGH RISK" if len(issues) >= 3 or subs < 500 else (
+           "🟡 MEDIUM RISK" if issues else "🟢 LOW RISK")
+
+    lines = [
+        f"*Risk Level*: {risk}",
+        "",
+        f"*Channel*: {name} (@{username})",
+        f"*Subscribers*: {subs:,}" if member_count else "*Subscribers*: Could not fetch",
+        "",
+        "*Issues Found:*",
+    ]
+    lines += [f"  {i}" for i in issues] if issues else ["  ✅ No major issues detected from available data"]
+    lines += ["", "*Priority Recommendations:*"]
+    lines += [f"  ➡️ {r}" for r in recs] if recs else ["  ✅ Channel appears structurally compliant"]
+
+    return "\n".join(lines)
 
 
-def _rule_based_analysis(name, username, description, member_count, violations, entity_type) -> str:
-    lines = []
-    subs  = member_count or 0
+def _fallback_diagnosis(name, username, description, member_count, profile_issues, content_violations) -> str:
+    subs    = member_count or 0
+    primary = []
+    factors = []
+    fixes   = []
 
     if subs < 1000:
-        lines.append(f"• Low subscriber base ({subs:,}) — below Telegram Ads trust threshold")
+        primary.append(f"Low subscriber count ({subs:,}) is the primary trust signal failing Telegram's review threshold")
+        fixes.append("1. Grow audience to 1,000+ subscribers immediately")
     if not description:
-        lines.append("• No description set — empty profile reduces approval confidence")
-    for cat, phrases in violations.items():
-        lines.append(f"• Policy signal detected — {cat}: {', '.join(str(p) for p in phrases[:3])}")
+        primary.append("Missing description removes a critical trust signal from the channel profile")
+        fixes.append("2. Add a niche-specific, policy-compliant description")
+    for issue in profile_issues[:2]:
+        factors.append(str(issue))
+    for cat, phrases in content_violations.items():
+        factors.append(f"{cat} signals: {', '.join(str(p) for p in phrases[:2])}")
+        fixes.append(f"3. Remove {cat}-related content from description and posts")
 
-    if not lines:
-        return "No major compliance issues detected based on available data. Review post content for additional signals."
-
-    risk = "🔴 HIGH RISK" if len(lines) >= 3 else ("🟡 MEDIUM RISK" if len(lines) >= 1 else "🟢 LOW RISK")
-    result = f"*Risk Level*: {risk}\n\n*Issues Found:*\n" + "\n".join(lines)
-    result += f"\n\n*Recommendations:*\n"
-    if subs < 1000:
-        result += "• Grow your audience to 1,000+ subscribers before running ads\n"
-    if not description:
-        result += "• Add a clear, niche-specific description immediately\n"
-    if violations:
-        result += "• Remove policy-risky phrases from description and posts\n"
+    result  = "*Primary Rejection Reason:*\n"
+    result += "\n".join(f"  • {p}" for p in primary) if primary else "  • Multiple combined signals reducing approval confidence"
+    if factors:
+        result += "\n\n*Contributing Factors:*\n" + "\n".join(f"  • {f}" for f in factors)
+    if fixes:
+        result += "\n\n*Action Plan (in priority order):*\n" + "\n".join(f"  {f}" for f in fixes)
+    result += (
+        "\n\n*Combined Effect:* These factors together signal low quality or policy risk to "
+        "Telegram's automated review system, reducing approval confidence significantly."
+    )
     return result
 
 
-def _rule_based_description_fix(name, username, current_desc, entity_type, niche) -> str:
-    base   = niche or name
-    base_c = base.replace("_", " ").title()
+def _fallback_description(name, username, current_desc, entity_type, context) -> str:
+    base = context.replace("_", " ").strip()
+    base_title = base.title() if len(base) < 30 else name.replace("_", " ").title()
+
     if entity_type == "channel":
-        return f"{base_c} delivers expert insights and curated content for professionals in the niche. Follow for reliable, high-quality updates that help you stay informed and ahead."
+        templates = [
+            f"{base_title} delivers expert insights and curated content for professionals who want to stay ahead in their field. Follow for reliable, high-quality updates.",
+            f"Stay informed with {base_title} — trusted content, expert analysis, and practical knowledge for a focused audience. Subscribe today.",
+            f"{base_title} is your go-to source for professional content and niche-specific insights. Join a community that values quality and accuracy.",
+        ]
     elif entity_type == "group":
-        return f"Join {base_c} — a professional community for knowledge-sharing, discussion, and growth in your field. Connect with like-minded members today."
+        templates = [
+            f"Join {base_title} — a professional community for knowledge exchange, discussion, and growth. Connect with like-minded members in your field.",
+            f"{base_title} brings together professionals for meaningful discussion and real insights. A moderated space for serious learners.",
+            f"Grow your network and knowledge in {base_title}. A community built on quality discussion, mutual support, and professional development.",
+        ]
     else:
-        return f"{base_c} provides smart, automated tools to help you work more efficiently inside Telegram. Start now and experience the difference."
+        templates = [
+            f"{base_title} provides smart, automated tools to boost your productivity inside Telegram. Start now and experience the difference.",
+            f"Simplify your workflow with {base_title}. Fast, reliable, and built for real users who want results without complexity.",
+            f"{base_title} helps you work smarter with intelligent automation. Trusted by users who value efficiency and reliability.",
+        ]
+    return random.choice(templates)
 
 
-def _rule_based_name_fix(current_name, username, entity_type) -> str:
-    base = username.lower().replace("_", "").capitalize()
+def _fallback_name_fix(current_name, username, entity_type) -> str:
+    base = username.lower().replace("_", "").replace("-", "")
+    b    = base.capitalize()
     if entity_type == "channel":
-        return f"1. {base}Insights\n2. {base}Hub\n3. The{base}Channel"
+        return (
+            f"1. {b}Insights — Clean, niche-specific, positions channel as expert source\n"
+            f"2. {b}Hub — Trustworthy, community-focused, policy-safe\n"
+            f"3. The{b}Channel — Clear, professional, easy to understand"
+        )
     elif entity_type == "group":
-        return f"1. {base}Community\n2. {base}Network\n3. {base}Circle"
+        return (
+            f"1. {b}Community — Welcoming and clearly describes purpose\n"
+            f"2. {b}Network — Professional tone, niche-relevant\n"
+            f"3. {b}Circle — Modern, approachable, non-spammy"
+        )
     else:
-        return f"1. {base}AssistBot\n2. {base}HelperBot\n3. {base}ProBot"
+        return (
+            f"1. {b}AssistBot — Clear functional purpose, policy-compliant\n"
+            f"2. {b}HelperBot — Simple, trustworthy, easy to remember\n"
+            f"3. {b}ProBot — Professional positioning, Telegram convention compliant"
+        )
 
 
-def _rule_based_post_rewrite(post_text, violation_categories) -> str:
-    import re
+def _fallback_post_rewrite(post_text, violation_categories) -> str:
     cleaned = post_text
     for phrase, safe in REWRITE_MAP.items():
         cleaned = re.sub(re.escape(phrase), safe, cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r'!{2,}', '.', cleaned)
     cleaned = re.sub(r'\?{2,}', '?', cleaned)
+
+    def fix_caps(m):
+        w = m.group(0)
+        return w.capitalize() if len(w) > 3 else w
+    cleaned = re.sub(r'\b[A-Z]{4,}\b', fix_caps, cleaned)
     return cleaned.strip()
 
 
-def _rule_based_ad_copies(name, username, entity_type, context) -> str:
+def _fallback_ad_copies(name, username, entity_type, context, angles) -> str:
     b = name.replace("_", " ").title()
     if entity_type == "channel":
         return (
-            f"📢 Copy 1 — Informational:\n"
-            f"Stay ahead with {b} — expert insights and curated content for a focused audience. ➡️ Follow now.\n\n"
-            f"📢 Copy 2 — Community:\n"
-            f"Thousands trust {b} for reliable, niche-specific content. Join them today. ➡️ Subscribe.\n\n"
-            f"📢 Copy 3 — Value:\n"
-            f"{b} delivers practical knowledge with no fluff. Level up your expertise. ➡️ Follow the channel."
+            f"📢 Copy 1 — {angles[0]}:\n"
+            f"Stay ahead with {b} — expert content trusted by a focused, engaged audience. ➡️ Follow now.\n\n"
+            f"📢 Copy 2 — {angles[1]}:\n"
+            f"Join thousands who rely on {b} for reliable, niche-specific insights. ➡️ Subscribe today.\n\n"
+            f"📢 Copy 3 — {angles[2]}:\n"
+            f"{b} delivers practical knowledge with no filler. Elevate your expertise. ➡️ Follow the channel."
         )
     elif entity_type == "group":
         return (
-            f"📢 Copy 1 — Informational:\n"
-            f"Join {b} — where professionals share insights and grow together. ➡️ Join now.\n\n"
-            f"📢 Copy 2 — Community:\n"
-            f"Real discussions. Expert opinions. {b} is built for serious learners. ➡️ Join today.\n\n"
-            f"📢 Copy 3 — Value:\n"
-            f"{b} is a moderated, professional space for your niche. Come and connect. ➡️ Join the group."
+            f"📢 Copy 1 — {angles[0]}:\n"
+            f"Connect with professionals in {b} — real discussions, expert opinions, genuine growth. ➡️ Join now.\n\n"
+            f"📢 Copy 2 — {angles[1]}:\n"
+            f"{b} is where serious learners gather to share knowledge and grow together. ➡️ Join the community.\n\n"
+            f"📢 Copy 3 — {angles[2]}:\n"
+            f"A moderated, professional space built for your niche — that's {b}. ➡️ Come and connect."
         )
     else:
         return (
-            f"📢 Copy 1 — Utility:\n"
-            f"Automate and simplify with {b}. Smart tools right inside Telegram. ➡️ Start now.\n\n"
-            f"📢 Copy 2 — Efficiency:\n"
-            f"Save time with {b}. Built for real users who want results. ➡️ Try it.\n\n"
-            f"📢 Copy 3 — Trust:\n"
-            f"Thousands use {b} daily. Reliable, fast, and easy. ➡️ Get started."
+            f"📢 Copy 1 — {angles[0]}:\n"
+            f"Work smarter with {b} — intelligent automation built right into Telegram. ➡️ Start now.\n\n"
+            f"📢 Copy 2 — {angles[1]}:\n"
+            f"Save time and get results with {b}. Built for users who value efficiency. ➡️ Try it today.\n\n"
+            f"📢 Copy 3 — {angles[2]}:\n"
+            f"{b} is trusted by thousands for reliable, fast, and easy-to-use tools. ➡️ Get started."
         )
 
 
-def _rule_based_target_analysis(name, username, description, member_count, violations) -> str:
+def _fallback_target_analysis(name, username, description, member_count, violations) -> str:
     subs  = member_count or 0
     flags = []
     recs  = []
 
-    if subs < 1000:
-        flags.append(f"Low subscriber count ({subs:,} — minimum 1,000 recommended)")
-        recs.append("Grow audience to 1,000+ before using as ad target")
-    if not description:
-        flags.append("No description set — weak profile signal")
-        recs.append("Add a niche-specific description")
-    for cat, phrases in violations.items():
-        flags.append(f"Policy signal: {cat} — {', '.join(str(p) for p in phrases[:2])}")
-        recs.append(f"Remove {cat}-related content from the channel")
+    if subs < 500:
+        flags.append(f"Very low audience ({subs:,} subscribers) — high rejection risk for ad placement")
+        recs.append("Grow channel to 1,000+ subscribers before using as ad target")
+    elif subs < 1000:
+        flags.append(f"Low subscriber count ({subs:,}) — below recommended minimum for reliable ad placement")
+        recs.append("Aim for 5,000+ subscribers for strong ad placement confidence")
 
-    risk = "🔴 HIGH RISK" if len(flags) >= 3 else ("🟡 MEDIUM RISK" if flags else "🟢 LOW RISK")
-    result = f"*Risk Assessment*: {risk}\n"
-    if flags:
-        result += "\n*Reasons:*\n" + "\n".join(f"  • {f}" for f in flags)
+    if not description:
+        flags.append("No description — weak profile signal reduces ad approval confidence")
+        recs.append("Add a niche-specific, policy-compliant description")
+
+    for cat, phrases in violations.items():
+        flags.append(f"Policy signal detected — {cat}: {', '.join(str(p) for p in phrases[:2])}")
+        recs.append(f"Remove {cat}-related content before using as ad target")
+
+    risk = "🔴 HIGH RISK" if len(flags) >= 3 or subs < 500 else (
+           "🟡 MEDIUM RISK" if flags else "🟢 LOW RISK")
+
+    result  = f"*Risk Level*: {risk}\n\n"
+    result += "*Placement Issues (based on real data):*\n"
+    result += "\n".join(f"  • {f}" for f in flags) if flags else "  ✅ No major issues detected"
+    result += "\n\n*Suitability:* "
+    if len(flags) >= 3:
+        result += "Not recommended for ad placement until issues are resolved."
+    elif flags:
+        result += "Conditionally suitable — resolve flagged issues first."
     else:
-        result += "\nNo major issues detected based on available data."
+        result += "Suitable for ad placement based on available data."
     if recs:
         result += "\n\n*Recommendations:*\n" + "\n".join(f"  ➡️ {r}" for r in recs)
-    return result
-
-
-def _rule_based_diagnosis(name, username, description, member_count, profile_issues, content_violations) -> str:
-    primary    = []
-    secondary  = []
-    priorities = []
-
-    subs = member_count or 0
-    if subs < 1000:
-        primary.append(f"Low subscriber base ({subs:,}) significantly reduces Telegram's trust score for this channel")
-        priorities.append("1. Grow subscribers to 1,000+ immediately")
-    if not description:
-        primary.append("Missing description — Telegram's review system flags empty profiles as low-quality destinations")
-        priorities.append("2. Add a clear, niche-specific description")
-    for issue in profile_issues[:2]:
-        secondary.append(str(issue))
-    for cat, phrases in content_violations.items():
-        secondary.append(f"{cat} signals in content: {', '.join(str(p) for p in phrases[:2])}")
-        priorities.append(f"3. Remove {cat}-related content")
-
-    result = "*Primary Rejection Reason:*\n"
-    result += "\n".join(f"  • {p}" for p in primary) if primary else "  • No single dominant factor identified\n"
-    if secondary:
-        result += "\n\n*Contributing Factors:*\n" + "\n".join(f"  • {s}" for s in secondary)
-    if priorities:
-        result += "\n\n*Fix Priority Order:*\n" + "\n".join(f"  {p}" for p in priorities)
-    result += (
-        "\n\n*Combined Effect:* These signals together reduce Telegram's confidence "
-        "in approving ads for this destination. Address the priority items above before resubmitting."
-    )
     return result
