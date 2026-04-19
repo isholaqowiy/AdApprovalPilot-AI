@@ -1,395 +1,736 @@
-==> Downloading cache...
-==> Cloning from https://github.com/isholaqowiy/AdApprovalPilot-AI
-==> Checking out commit ff5d7334608d1dad749e2351518c2d6dc3fdca03 in branch main
-==> Downloaded 97MB in 3s. Extraction took 1s.
-==> Using Python version 3.12.2 via environment variable PYTHON_VERSION
-==> Docs on specifying a Python version: https://render.com/docs/python-version
-Menu
-==> Installing Python version 3.12.2...
-==> Using Poetry version 2.1.3 (default)
-==> Docs on specifying a Poetry version: https://render.com/docs/poetry-version
-==> Running build command 'pip install -r requirements.txt'...
-Collecting python-telegram-bot>=21.0 (from python-telegram-bot[job-queue]>=21.0->-r requirements.txt (line 1))
-  Using cached python_telegram_bot-22.7-py3-none-any.whl.metadata (17 kB)
-Collecting flask==3.0.2 (from -r requirements.txt (line 2))
-  Using cached flask-3.0.2-py3-none-any.whl.metadata (3.6 kB)
-Collecting gunicorn==21.2.0 (from -r requirements.txt (line 3))
-  Using cached gunicorn-21.2.0-py3-none-any.whl.metadata (4.1 kB)
-Collecting httpx==0.27.0 (from -r requirements.txt (line 4))
-  Using cached httpx-0.27.0-py3-none-any.whl.metadata (7.2 kB)
-Collecting google-generativeai>=0.5.0 (from -r requirements.txt (line 5))
-  Using cached google_generativeai-0.8.6-py3-none-any.whl.metadata (3.9 kB)
-Collecting Werkzeug>=3.0.0 (from flask==3.0.2->-r requirements.txt (line 2))
-  Using cached werkzeug-3.1.8-py3-none-any.whl.metadata (4.0 kB)
-Collecting Jinja2>=3.1.2 (from flask==3.0.2->-r requirements.txt (line 2))
-  Using cached jinja2-3.1.6-py3-none-any.whl.metadata (2.9 kB)
-Collecting itsdangerous>=2.1.2 (from flask==3.0.2->-r requirements.txt (line 2))
-  Using cached itsdangerous-2.2.0-py3-none-any.whl.metadata (1.9 kB)
-Collecting click>=8.1.3 (from flask==3.0.2->-r requirements.txt (line 2))
-  Using cached click-8.3.2-py3-none-any.whl.metadata (2.6 kB)
-Collecting blinker>=1.6.2 (from flask==3.0.2->-r requirements.txt (line 2))
-  Using cached blinker-1.9.0-py3-none-any.whl.metadata (1.6 kB)
-Collecting packaging (from gunicorn==21.2.0->-r requirements.txt (line 3))
-  Using cached packaging-26.1-py3-none-any.whl.metadata (3.5 kB)
-Collecting anyio (from httpx==0.27.0->-r requirements.txt (line 4))
-  Using cached anyio-4.13.0-py3-none-any.whl.metadata (4.5 kB)
-Collecting certifi (from httpx==0.27.0->-r requirements.txt (line 4))
-  Using cached certifi-2026.2.25-py3-none-any.whl.metadata (2.5 kB)
-Collecting httpcore==1.* (from httpx==0.27.0->-r requirements.txt (line 4))
-  Using cached httpcore-1.0.9-py3-none-any.whl.metadata (21 kB)
-Collecting idna (from httpx==0.27.0->-r requirements.txt (line 4))
-  Using cached idna-3.11-py3-none-any.whl.metadata (8.4 kB)
-Collecting sniffio (from httpx==0.27.0->-r requirements.txt (line 4))
-  Using cached sniffio-1.3.1-py3-none-any.whl.metadata (3.9 kB)
-Collecting h11>=0.16 (from httpcore==1.*->httpx==0.27.0->-r requirements.txt (line 4))
-  Using cached h11-0.16.0-py3-none-any.whl.metadata (8.3 kB)
-Collecting google-ai-generativelanguage==0.6.15 (from google-generativeai>=0.5.0->-r requirements.txt (line 5))
-  Using cached google_ai_generativelanguage-0.6.15-py3-none-any.whl.metadata (5.7 kB)
-Collecting google-api-core (from google-generativeai>=0.5.0->-r requirements.txt (line 5))
-  Using cached google_api_core-2.30.3-py3-none-any.whl.metadata (3.1 kB)
-Collecting google-api-python-client (from google-generativeai>=0.5.0->-r requirements.txt (line 5))
-  Using cached google_api_python_client-2.194.0-py3-none-any.whl.metadata (7.0 kB)
-Collecting google-auth>=2.15.0 (from google-generativeai>=0.5.0->-r requirements.txt (line 5))
-  Using cached google_auth-2.49.2-py3-none-any.whl.metadata (6.2 kB)
-Collecting protobuf (from google-generativeai>=0.5.0->-r requirements.txt (line 5))
-  Using cached protobuf-7.34.1-cp310-abi3-manylinux2014_x86_64.whl.metadata (595 bytes)
-Collecting pydantic (from google-generativeai>=0.5.0->-r requirements.txt (line 5))
-  Using cached pydantic-2.13.2-py3-none-any.whl.metadata (108 kB)
-Collecting tqdm (from google-generativeai>=0.5.0->-r requirements.txt (line 5))
-  Using cached tqdm-4.67.3-py3-none-any.whl.metadata (57 kB)
-Collecting typing-extensions (from google-generativeai>=0.5.0->-r requirements.txt (line 5))
-  Using cached typing_extensions-4.15.0-py3-none-any.whl.metadata (3.3 kB)
-Collecting proto-plus<2.0.0dev,>=1.22.3 (from google-ai-generativelanguage==0.6.15->google-generativeai>=0.5.0->-r requirements.txt (line 5))
-  Using cached proto_plus-1.27.2-py3-none-any.whl.metadata (2.2 kB)
-Collecting protobuf (from google-generativeai>=0.5.0->-r requirements.txt (line 5))
-  Using cached protobuf-5.29.6-cp38-abi3-manylinux2014_x86_64.whl.metadata (592 bytes)
-Collecting apscheduler<3.12.0,>=3.10.4 (from python-telegram-bot[job-queue]>=21.0->-r requirements.txt (line 1))
-  Using cached apscheduler-3.11.2-py3-none-any.whl.metadata (6.4 kB)
-Collecting tzlocal>=3.0 (from apscheduler<3.12.0,>=3.10.4->python-telegram-bot[job-queue]>=21.0->-r requirements.txt (line 1))
-  Using cached tzlocal-5.3.1-py3-none-any.whl.metadata (7.6 kB)
-Collecting googleapis-common-protos<2.0.0,>=1.63.2 (from google-api-core->google-generativeai>=0.5.0->-r requirements.txt (line 5))
-  Using cached googleapis_common_protos-1.74.0-py3-none-any.whl.metadata (9.2 kB)
-Collecting requests<3.0.0,>=2.20.0 (from google-api-core->google-generativeai>=0.5.0->-r requirements.txt (line 5))
-  Using cached requests-2.33.1-py3-none-any.whl.metadata (4.8 kB)
-Collecting pyasn1-modules>=0.2.1 (from google-auth>=2.15.0->google-generativeai>=0.5.0->-r requirements.txt (line 5))
-  Using cached pyasn1_modules-0.4.2-py3-none-any.whl.metadata (3.5 kB)
-Collecting cryptography>=38.0.3 (from google-auth>=2.15.0->google-generativeai>=0.5.0->-r requirements.txt (line 5))
-  Using cached cryptography-46.0.7-cp311-abi3-manylinux_2_34_x86_64.whl.metadata (5.7 kB)
-Collecting MarkupSafe>=2.0 (from Jinja2>=3.1.2->flask==3.0.2->-r requirements.txt (line 2))
-  Using cached markupsafe-3.0.3-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (2.7 kB)
-Collecting httplib2<1.0.0,>=0.19.0 (from google-api-python-client->google-generativeai>=0.5.0->-r requirements.txt (line 5))
-  Using cached httplib2-0.31.2-py3-none-any.whl.metadata (2.2 kB)
-Collecting google-auth-httplib2<1.0.0,>=0.2.0 (from google-api-python-client->google-generativeai>=0.5.0->-r requirements.txt (line 5))
-  Using cached google_auth_httplib2-0.3.1-py3-none-any.whl.metadata (3.0 kB)
-Collecting uritemplate<5,>=3.0.1 (from google-api-python-client->google-generativeai>=0.5.0->-r requirements.txt (line 5))
-  Using cached uritemplate-4.2.0-py3-none-any.whl.metadata (2.6 kB)
-Collecting annotated-types>=0.6.0 (from pydantic->google-generativeai>=0.5.0->-r requirements.txt (line 5))
-  Using cached annotated_types-0.7.0-py3-none-any.whl.metadata (15 kB)
-Collecting pydantic-core==2.46.2 (from pydantic->google-generativeai>=0.5.0->-r requirements.txt (line 5))
-  Using cached pydantic_core-2.46.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (6.6 kB)
-Collecting typing-inspection>=0.4.2 (from pydantic->google-generativeai>=0.5.0->-r requirements.txt (line 5))
-  Using cached typing_inspection-0.4.2-py3-none-any.whl.metadata (2.6 kB)
-Collecting cffi>=2.0.0 (from cryptography>=38.0.3->google-auth>=2.15.0->google-generativeai>=0.5.0->-r requirements.txt (line 5))
-  Using cached cffi-2.0.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (2.6 kB)
-Collecting grpcio<2.0.0,>=1.33.2 (from google-api-core[grpc]!=2.0.*,!=2.1.*,!=2.10.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,<3.0.0dev,>=1.34.1->google-ai-generativelanguage==0.6.15->google-generativeai>=0.5.0->-r requirements.txt (line 5))
-  Using cached grpcio-1.80.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (3.8 kB)
-Collecting grpcio-status<2.0.0,>=1.33.2 (from google-api-core[grpc]!=2.0.*,!=2.1.*,!=2.10.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,<3.0.0dev,>=1.34.1->google-ai-generativelanguage==0.6.15->google-generativeai>=0.5.0->-r requirements.txt (line 5))
-  Using cached grpcio_status-1.80.0-py3-none-any.whl.metadata (1.3 kB)
-Collecting pyparsing<4,>=3.1 (from httplib2<1.0.0,>=0.19.0->google-api-python-client->google-generativeai>=0.5.0->-r requirements.txt (line 5))
-  Using cached pyparsing-3.3.2-py3-none-any.whl.metadata (5.8 kB)
-Collecting pyasn1<0.7.0,>=0.6.1 (from pyasn1-modules>=0.2.1->google-auth>=2.15.0->google-generativeai>=0.5.0->-r requirements.txt (line 5))
-  Using cached pyasn1-0.6.3-py3-none-any.whl.metadata (8.4 kB)
-Collecting charset_normalizer<4,>=2 (from requests<3.0.0,>=2.20.0->google-api-core->google-generativeai>=0.5.0->-r requirements.txt (line 5))
-  Using cached charset_normalizer-3.4.7-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (40 kB)
-Collecting urllib3<3,>=1.26 (from requests<3.0.0,>=2.20.0->google-api-core->google-generativeai>=0.5.0->-r requirements.txt (line 5))
-  Using cached urllib3-2.6.3-py3-none-any.whl.metadata (6.9 kB)
-Collecting pycparser (from cffi>=2.0.0->cryptography>=38.0.3->google-auth>=2.15.0->google-generativeai>=0.5.0->-r requirements.txt (line 5))
-  Using cached pycparser-3.0-py3-none-any.whl.metadata (8.2 kB)
-INFO: pip is looking at multiple versions of grpcio-status to determine which version is compatible with other requirements. This could take a while.
-Collecting grpcio-status<2.0.0,>=1.33.2 (from google-api-core[grpc]!=2.0.*,!=2.1.*,!=2.10.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,<3.0.0dev,>=1.34.1->google-ai-generativelanguage==0.6.15->google-generativeai>=0.5.0->-r requirements.txt (line 5))
-  Using cached grpcio_status-1.78.0-py3-none-any.whl.metadata (1.3 kB)
-  Using cached grpcio_status-1.76.0-py3-none-any.whl.metadata (1.1 kB)
-  Using cached grpcio_status-1.75.1-py3-none-any.whl.metadata (1.1 kB)
-  Using cached grpcio_status-1.75.0-py3-none-any.whl.metadata (1.1 kB)
-  Using cached grpcio_status-1.74.0-py3-none-any.whl.metadata (1.1 kB)
-  Using cached grpcio_status-1.73.1-py3-none-any.whl.metadata (1.1 kB)
-  Using cached grpcio_status-1.73.0-py3-none-any.whl.metadata (1.1 kB)
-INFO: pip is still looking at multiple versions of grpcio-status to determine which version is compatible with other requirements. This could take a while.
-  Using cached grpcio_status-1.72.2-py3-none-any.whl.metadata (1.1 kB)
-  Using cached grpcio_status-1.72.1-py3-none-any.whl.metadata (1.1 kB)
-  Using cached grpcio_status-1.71.2-py3-none-any.whl.metadata (1.1 kB)
-Using cached flask-3.0.2-py3-none-any.whl (101 kB)
-Using cached gunicorn-21.2.0-py3-none-any.whl (80 kB)
-Using cached httpx-0.27.0-py3-none-any.whl (75 kB)
-Using cached httpcore-1.0.9-py3-none-any.whl (78 kB)
-Using cached python_telegram_bot-22.7-py3-none-any.whl (745 kB)
-Using cached google_generativeai-0.8.6-py3-none-any.whl (155 kB)
-Using cached google_ai_generativelanguage-0.6.15-py3-none-any.whl (1.3 MB)
-Using cached apscheduler-3.11.2-py3-none-any.whl (64 kB)
-Using cached blinker-1.9.0-py3-none-any.whl (8.5 kB)
-Using cached click-8.3.2-py3-none-any.whl (108 kB)
-Using cached google_api_core-2.30.3-py3-none-any.whl (173 kB)
-Using cached google_auth-2.49.2-py3-none-any.whl (240 kB)
-Using cached itsdangerous-2.2.0-py3-none-any.whl (16 kB)
-Using cached jinja2-3.1.6-py3-none-any.whl (134 kB)
-Using cached protobuf-5.29.6-cp38-abi3-manylinux2014_x86_64.whl (320 kB)
-Using cached werkzeug-3.1.8-py3-none-any.whl (226 kB)
-Using cached anyio-4.13.0-py3-none-any.whl (114 kB)
-Using cached idna-3.11-py3-none-any.whl (71 kB)
-Using cached typing_extensions-4.15.0-py3-none-any.whl (44 kB)
-Using cached certifi-2026.2.25-py3-none-any.whl (153 kB)
-Using cached google_api_python_client-2.194.0-py3-none-any.whl (15.0 MB)
-Using cached packaging-26.1-py3-none-any.whl (95 kB)
-Using cached pydantic-2.13.2-py3-none-any.whl (471 kB)
-Using cached pydantic_core-2.46.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (2.1 MB)
-Using cached sniffio-1.3.1-py3-none-any.whl (10 kB)
-Using cached tqdm-4.67.3-py3-none-any.whl (78 kB)
-Using cached annotated_types-0.7.0-py3-none-any.whl (13 kB)
-Using cached cryptography-46.0.7-cp311-abi3-manylinux_2_34_x86_64.whl (4.5 MB)
-Using cached google_auth_httplib2-0.3.1-py3-none-any.whl (9.5 kB)
-Using cached googleapis_common_protos-1.74.0-py3-none-any.whl (300 kB)
-Using cached h11-0.16.0-py3-none-any.whl (37 kB)
-Using cached httplib2-0.31.2-py3-none-any.whl (91 kB)
-Using cached markupsafe-3.0.3-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (22 kB)
-Using cached proto_plus-1.27.2-py3-none-any.whl (50 kB)
-Using cached pyasn1_modules-0.4.2-py3-none-any.whl (181 kB)
-Using cached requests-2.33.1-py3-none-any.whl (64 kB)
-Using cached typing_inspection-0.4.2-py3-none-any.whl (14 kB)
-Using cached tzlocal-5.3.1-py3-none-any.whl (18 kB)
-Using cached uritemplate-4.2.0-py3-none-any.whl (11 kB)
-Using cached cffi-2.0.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (219 kB)
-Using cached charset_normalizer-3.4.7-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (216 kB)
-Using cached grpcio-1.80.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (6.8 MB)
-Using cached grpcio_status-1.71.2-py3-none-any.whl (14 kB)
-Using cached pyasn1-0.6.3-py3-none-any.whl (83 kB)
-Using cached pyparsing-3.3.2-py3-none-any.whl (122 kB)
-Using cached urllib3-2.6.3-py3-none-any.whl (131 kB)
-Using cached pycparser-3.0-py3-none-any.whl (48 kB)
-Installing collected packages: urllib3, uritemplate, tzlocal, typing-extensions, tqdm, sniffio, pyparsing, pycparser, pyasn1, protobuf, packaging, MarkupSafe, itsdangerous, idna, h11, click, charset_normalizer, certifi, blinker, annotated-types, Werkzeug, typing-inspection, requests, pydantic-core, pyasn1-modules, proto-plus, Jinja2, httplib2, httpcore, gunicorn, grpcio, googleapis-common-protos, cffi, apscheduler, anyio, pydantic, httpx, grpcio-status, flask, cryptography, python-telegram-bot, google-auth, google-auth-httplib2, google-api-core, google-api-python-client, google-ai-generativelanguage, google-generativeai
-Successfully installed Jinja2-3.1.6 MarkupSafe-3.0.3 Werkzeug-3.1.8 annotated-types-0.7.0 anyio-4.13.0 apscheduler-3.11.2 blinker-1.9.0 certifi-2026.2.25 cffi-2.0.0 charset_normalizer-3.4.7 click-8.3.2 cryptography-46.0.7 flask-3.0.2 google-ai-generativelanguage-0.6.15 google-api-core-2.30.3 google-api-python-client-2.194.0 google-auth-2.49.2 google-auth-httplib2-0.3.1 google-generativeai-0.8.6 googleapis-common-protos-1.74.0 grpcio-1.80.0 grpcio-status-1.71.2 gunicorn-21.2.0 h11-0.16.0 httpcore-1.0.9 httplib2-0.31.2 httpx-0.27.0 idna-3.11 itsdangerous-2.2.0 packaging-26.1 proto-plus-1.27.2 protobuf-5.29.6 pyasn1-0.6.3 pyasn1-modules-0.4.2 pycparser-3.0 pydantic-2.13.2 pydantic-core-2.46.2 pyparsing-3.3.2 python-telegram-bot-22.7 requests-2.33.1 sniffio-1.3.1 tqdm-4.67.3 typing-extensions-4.15.0 typing-inspection-0.4.2 tzlocal-5.3.1 uritemplate-4.2.0 urllib3-2.6.3
-[notice] A new release of pip is available: 24.0 -> 26.0.1
-[notice] To update, run: pip install --upgrade pip
-==> Uploading build...
-==> Uploaded in 3.0s. Compression took 3.9s
-==> Build successful 🎉
-==> Deploying...
-https://github.com/google-gemini/deprecated-generative-ai-python/blob/main/README.md
-  import google.generativeai as genai
-/opt/render/project/src/app.py:1221: PTBUserWarning: If 'per_message=False', 'CallbackQueryHandler' will not be tracked for every message. Read this FAQ entry to learn more about the per_* settings: https://github.com/python-telegram-bot/python-telegram-bot/wiki/Frequently-Asked-Questions#what-do-the-per_-settings-in-conversationhandler-do.
-  ptb_app.add_handler(ConversationHandler(
-/opt/render/project/src/app.py:1229: PTBUserWarning: If 'per_message=False', 'CallbackQueryHandler' will not be tracked for every message. Read this FAQ entry to learn more about the per_* settings: https://github.com/python-telegram-bot/python-telegram-bot/wiki/Frequently-Asked-Questions#what-do-the-per_-settings-in-conversationhandler-do.
-  ptb_app.add_handler(ConversationHandler(
-/opt/render/project/src/app.py:1237: PTBUserWarning: If 'per_message=False', 'CallbackQueryHandler' will not be tracked for every message. Read this FAQ entry to learn more about the per_* settings: https://github.com/python-telegram-bot/python-telegram-bot/wiki/Frequently-Asked-Questions#what-do-the-per_-settings-in-conversationhandler-do.
-  ptb_app.add_handler(ConversationHandler(
-/opt/render/project/src/app.py:1245: PTBUserWarning: If 'per_message=False', 'CallbackQueryHandler' will not be tracked for every message. Read this FAQ entry to learn more about the per_* settings: https://github.com/python-telegram-bot/python-telegram-bot/wiki/Frequently-Asked-Questions#what-do-the-per_-settings-in-conversationhandler-do.
-  ptb_app.add_handler(ConversationHandler(
-/opt/render/project/src/app.py:1253: PTBUserWarning: If 'per_message=False', 'CallbackQueryHandler' will not be tracked for every message. Read this FAQ entry to learn more about the per_* settings: https://github.com/python-telegram-bot/python-telegram-bot/wiki/Frequently-Asked-Questions#what-do-the-per_-settings-in-conversationhandler-do.
-  ptb_app.add_handler(ConversationHandler(
-/opt/render/project/src/app.py:1264: PTBUserWarning: If 'per_message=False', 'CallbackQueryHandler' will not be tracked for every message. Read this FAQ entry to learn more about the per_* settings: https://github.com/python-telegram-bot/python-telegram-bot/wiki/Frequently-Asked-Questions#what-do-the-per_-settings-in-conversationhandler-do.
-  ptb_app.add_handler(ConversationHandler(
-/opt/render/project/src/app.py:1272: PTBUserWarning: If 'per_message=False', 'CallbackQueryHandler' will not be tracked for every message. Read this FAQ entry to learn more about the per_* settings: https://github.com/python-telegram-bot/python-telegram-bot/wiki/Frequently-Asked-Questions#what-do-the-per_-settings-in-conversationhandler-do.
-  ptb_app.add_handler(ConversationHandler(
-/opt/render/project/src/app.py:1280: PTBUserWarning: If 'per_message=False', 'CallbackQueryHandler' will not be tracked for every message. Read this FAQ entry to learn more about the per_* settings: https://github.com/python-telegram-bot/python-telegram-bot/wiki/Frequently-Asked-Questions#what-do-the-per_-settings-in-conversationhandler-do.
-  ptb_app.add_handler(ConversationHandler(
-2026-04-19 13:00:52,335 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8648572662:AAEmzOSkG8r1UItoA59uoGdBEeAgToJ-Sps/getMe "HTTP/1.1 200 OK"
-2026-04-19 13:00:52,496 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8648572662:AAEmzOSkG8r1UItoA59uoGdBEeAgToJ-Sps/setWebhook "HTTP/1.1 200 OK"
-2026-04-19 13:00:52,497 - app - INFO - Webhook set: https://adapprovalpilot-ai-sgdc.onrender.com/8648572662:AAEmzOSkG8r1UItoA59uoGdBEeAgToJ-Sps
-[2026-04-19 13:00:52 +0000] [59] [INFO] Starting gunicorn 21.2.0
-[2026-04-19 13:00:52 +0000] [59] [INFO] Listening at: http://0.0.0.0:10000 (59)
-[2026-04-19 13:00:52 +0000] [59] [INFO] Using worker: gthread
-[2026-04-19 13:00:52 +0000] [64] [INFO] Booting worker with pid: 64
-127.0.0.1 - - [19/Apr/2026:13:00:52 +0000] "HEAD / HTTP/1.1" 200 0 "-" "Go-http-client/1.1"
-==> Your service is live 🎉
-==> 
-==> ///////////////////////////////////////////////////////////
-==> 
-==> Available at your primary URL https://adapprovalpilot-ai-sgdc.onrender.com
-==> 
-==> ///////////////////////////////////////////////////////////
-2026-04-19 13:01:33,701 - telegram.ext.Application - ERROR - No error handlers are registered, logging exception.
-Traceback (most recent call last):
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/telegram/request/_baserequest.py", line 305, in _request_wrapper
-    code, payload = await self.do_request(
-                    ^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/telegram/request/_httpxrequest.py", line 279, in do_request
-    res = await self._client.request(
-          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1574, in request
-    return await self.send(request, auth=auth, follow_redirects=follow_redirects)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1661, in send
-    response = await self._send_handling_auth(
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1689, in _send_handling_auth
-    response = await self._send_handling_redirects(
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1726, in _send_handling_redirects
-    response = await self._send_single_request(request)
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1763, in _send_single_request
-    response = await transport.handle_async_request(request)
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/httpx/_transports/default.py", line 373, in handle_async_request
-    resp = await self._pool.handle_async_request(req)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/httpcore/_async/connection_pool.py", line 256, in handle_async_request
-    raise exc from None
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/httpcore/_async/connection_pool.py", line 229, in handle_async_request
-    await self._close_connections(closing)
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/httpcore/_async/connection_pool.py", line 345, in _close_connections
-    await connection.aclose()
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/httpcore/_async/connection.py", line 173, in aclose
-    await self._connection.aclose()
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/httpcore/_async/http11.py", line 258, in aclose
-    await self._network_stream.aclose()
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/httpcore/_backends/anyio.py", line 53, in aclose
-    await self._stream.aclose()
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/anyio/streams/tls.py", line 236, in aclose
-    await self.transport_stream.aclose()
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 1344, in aclose
-    self._transport.close()
-  File "/opt/render/project/python/Python-3.12.2/lib/python3.12/asyncio/selector_events.py", line 1210, in close
-    super().close()
-  File "/opt/render/project/python/Python-3.12.2/lib/python3.12/asyncio/selector_events.py", line 875, in close
-    self._loop.call_soon(self._call_connection_lost, None)
-  File "/opt/render/project/python/Python-3.12.2/lib/python3.12/asyncio/base_events.py", line 793, in call_soon
-    self._check_closed()
-  File "/opt/render/project/python/Python-3.12.2/lib/python3.12/asyncio/base_events.py", line 540, in _check_closed
-    raise RuntimeError('Event loop is closed')
-RuntimeError: Event loop is closed
-The above exception was the direct cause of the following exception:
-Traceback (most recent call last):
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/telegram/ext/_application.py", line 1315, in process_update
-    await coroutine
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/telegram/ext/_handlers/basehandler.py", line 159, in handle_update
-    return await self.callback(update, context)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/app.py", line 398, in start
-    await update.message.reply_text(
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/telegram/_message.py", line 2106, in reply_text
-    return await self.get_bot().send_message(
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/telegram/ext/_extbot.py", line 3118, in send_message
-    return await super().send_message(
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/telegram/_bot.py", line 1123, in send_message
-    return await self._send_message(
-           ^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/telegram/ext/_extbot.py", line 630, in _send_message
-    result = await super()._send_message(
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/telegram/_bot.py", line 820, in _send_message
-    result = await self._post(
-             ^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/telegram/_bot.py", line 704, in _post
-    return await self._do_post(
-           ^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/telegram/ext/_extbot.py", line 370, in _do_post
-    return await super()._do_post(
-           ^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/telegram/_bot.py", line 733, in _do_post
-    result = await request.post(
-             ^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/telegram/request/_baserequest.py", line 198, in post
-    result = await self._request_wrapper(
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/telegram/request/_baserequest.py", line 317, in _request_wrapper
-    raise NetworkError(f"Unknown error in HTTP implementation: {exc!r}") from exc
-telegram.error.NetworkError: Unknown error in HTTP implementation: RuntimeError('Event loop is closed')
-10.30.39.129 - - [19/Apr/2026:13:01:33 +0000] "POST /8648572662:AAEmzOSkG8r1UItoA59uoGdBEeAgToJ-Sps HTTP/1.1" 200 2 "-" "-"
-2026-04-19 13:01:38,550 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8648572662:AAEmzOSkG8r1UItoA59uoGdBEeAgToJ-Sps/sendMessage "HTTP/1.1 200 OK"
-10.31.71.1 - - [19/Apr/2026:13:01:38 +0000] "POST /8648572662:AAEmzOSkG8r1UItoA59uoGdBEeAgToJ-Sps HTTP/1.1" 200 2 "-" "-"
-2026-04-19 13:01:44,579 - telegram.ext.Application - ERROR - No error handlers are registered, logging exception.
-Traceback (most recent call last):
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/telegram/request/_baserequest.py", line 305, in _request_wrapper
-    code, payload = await self.do_request(
-                    ^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/telegram/request/_httpxrequest.py", line 279, in do_request
-    res = await self._client.request(
-          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1574, in request
-    return await self.send(request, auth=auth, follow_redirects=follow_redirects)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1661, in send
-    response = await self._send_handling_auth(
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1689, in _send_handling_auth
-    response = await self._send_handling_redirects(
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1726, in _send_handling_redirects
-    response = await self._send_single_request(request)
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1763, in _send_single_request
-    response = await transport.handle_async_request(request)
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/httpx/_transports/default.py", line 373, in handle_async_request
-    resp = await self._pool.handle_async_request(req)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/httpcore/_async/connection_pool.py", line 256, in handle_async_request
-    raise exc from None
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/httpcore/_async/connection_pool.py", line 229, in handle_async_request
-    await self._close_connections(closing)
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/httpcore/_async/connection_pool.py", line 345, in _close_connections
-    await connection.aclose()
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/httpcore/_async/connection.py", line 173, in aclose
-    await self._connection.aclose()
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/httpcore/_async/http11.py", line 258, in aclose
-    await self._network_stream.aclose()
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/httpcore/_backends/anyio.py", line 53, in aclose
-    await self._stream.aclose()
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/anyio/streams/tls.py", line 236, in aclose
-    await self.transport_stream.aclose()
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 1344, in aclose
-    self._transport.close()
-  File "/opt/render/project/python/Python-3.12.2/lib/python3.12/asyncio/selector_events.py", line 1210, in close
-    super().close()
-  File "/opt/render/project/python/Python-3.12.2/lib/python3.12/asyncio/selector_events.py", line 875, in close
-    self._loop.call_soon(self._call_connection_lost, None)
-  File "/opt/render/project/python/Python-3.12.2/lib/python3.12/asyncio/base_events.py", line 793, in call_soon
-    self._check_closed()
-  File "/opt/render/project/python/Python-3.12.2/lib/python3.12/asyncio/base_events.py", line 540, in _check_closed
-    raise RuntimeError('Event loop is closed')
-RuntimeError: Event loop is closed
-The above exception was the direct cause of the following exception:
-Traceback (most recent call last):
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/telegram/ext/_application.py", line 1315, in process_update
-    await coroutine
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/telegram/ext/_handlers/basehandler.py", line 159, in handle_update
-    return await self.callback(update, context)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/app.py", line 398, in start
-    await update.message.reply_text(
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/telegram/_message.py", line 2106, in reply_text
-    return await self.get_bot().send_message(
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/telegram/ext/_extbot.py", line 3118, in send_message
-    return await super().send_message(
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/telegram/_bot.py", line 1123, in send_message
-    return await self._send_message(
-           ^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/telegram/ext/_extbot.py", line 630, in _send_message
-    result = await super()._send_message(
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/telegram/_bot.py", line 820, in _send_message
-    result = await self._post(
-             ^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/telegram/_bot.py", line 704, in _post
-    return await self._do_post(
-           ^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/telegram/ext/_extbot.py", line 370, in _do_post
-    return await super()._do_post(
-           ^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/telegram/_bot.py", line 733, in _do_post
-    result = await request.post(
-             ^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/telegram/request/_baserequest.py", line 198, in post
-    result = await self._request_wrapper(
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/telegram/request/_baserequest.py", line 317, in _request_wrapper
-    raise NetworkError(f"Unknown error in HTTP implementation: {exc!r}") from exc
-telegram.error.NetworkError: Unknown error in HTTP implementation: RuntimeError('Event loop is closed')
-10.19.183.242 - - [19/Apr/2026:13:01:44 +0000] "POST /8648572662:AAEmzOSkG8r1UItoA59uoGdBEeAgToJ-Sps HTTP/1.1" 200 2 "-" "-"
-2026-04-19 13:01:55,921 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8648572662:AAEmzOSkG8r1UItoA59uoGdBEeAgToJ-Sps/answerCallbackQuery "HTTP/1.1 200 OK"
-2026-04-19 13:01:56,113 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot8648572662:AAEmzOSkG8r1UItoA59uoGdBEeAgToJ-Sps/editMessageText "HTTP/1.1 200 OK"
-10.20.171.132 - - [19/Apr/2026:13:01:56 +0000] "POST /8648572662:AAEmzOSkG8r1UItoA59uoGdBEeAgToJ-Sps HTTP/1.1" 200 2 "-" "-"
+"""
+ai_engine.py — AdApprovalPilot AI
+Production-grade AI engine.
+Primary: Gemini 1.5 Flash
+Fallback: Intelligent rule-based system (always responds)
+Branding: AdApprovalPilot AI only — never mentions Gemini, Claude, or AI
+"""
+import os
+import re
+import random
+import logging
+import google.generativeai as genai
+from google.generativeai.types import GenerationConfig
+
+logger = logging.getLogger(__name__)
+
+# ─────────────────────────────────────────────
+# GEMINI SETUP
+# ─────────────────────────────────────────────
+_GEMINI_KEY = os.getenv("GEMINI_API_KEY", "")
+
+if _GEMINI_KEY:
+    genai.configure(api_key=_GEMINI_KEY)
+    logger.info("Gemini API configured successfully")
+else:
+    logger.warning("GEMINI_API_KEY not found in environment — rule-based fallback will be used")
+
+# Generation config for unique, varied outputs
+_GEN_CONFIG = GenerationConfig(
+    temperature=0.9,
+    top_p=0.95,
+    max_output_tokens=1024,
+)
+
+_MODELS = ["gemini-1.5-flash", "gemini-1.5-pro"]
+
+
+def _call_gemini(prompt: str) -> str | None:
+    """
+    Attempt Gemini call. Returns text on success, None on any failure.
+    Tries flash first, then pro. Runs in a thread executor to avoid
+    blocking the async event loop.
+    """
+    if not _GEMINI_KEY:
+        logger.warning("No GEMINI_API_KEY — using fallback")
+        return None
+
+    for model_name in _MODELS:
+        try:
+            model    = genai.GenerativeModel(
+                model_name,
+                generation_config=_GEN_CONFIG,
+            )
+            # generate_content is synchronous — safe to call directly
+            # since we're already in a sync context (called from async via run_in_executor)
+            response = model.generate_content(
+                prompt,
+                request_options={"timeout": 30},
+            )
+            if response is None:
+                logger.warning(f"{model_name}: empty response object")
+                continue
+            # Access text safely
+            try:
+                text = response.text
+            except Exception:
+                # response.text raises if blocked or empty
+                logger.warning(f"{model_name}: response.text inaccessible (possibly blocked)")
+                continue
+
+            if text and text.strip() and len(text.strip()) > 20:
+                logger.info(f"Gemini ({model_name}) success — {len(text)} chars")
+                return text.strip()
+            else:
+                logger.warning(f"{model_name}: response too short or empty")
+
+        except Exception as e:
+            logger.warning(f"Gemini {model_name} failed: {type(e).__name__}: {e}")
+            continue
+
+    logger.error("All Gemini models failed — rule-based fallback will be used")
+    return None
+
+
+def _processing_error_msg() -> str:
+    """Never expose technical errors to users."""
+    return (
+        "AdApprovalPilot AI is processing your request. "
+        "Please try again shortly."
+    )
+
+
+# ─────────────────────────────────────────────
+# REWRITE MAP (used in rule-based fallback)
+# ─────────────────────────────────────────────
+REWRITE_MAP = {
+    "earn fast":           "grow your expertise quickly",
+    "make money":          "build financial value",
+    "get rich":            "achieve your financial goals",
+    "guaranteed":          "proven",
+    "guarantee":           "trusted",
+    "100%":                "highly effective",
+    "no risk":             "beginner-friendly",
+    "risk free":           "accessible",
+    "free money":          "free resources",
+    "instant profit":      "measurable results",
+    "passive income":      "consistent returns",
+    "work from home":      "remote opportunities",
+    "double your":         "grow your",
+    "click now":           "learn more",
+    "act now":             "get started",
+    "limited time":        "exclusive",
+    "join now":            "join us",
+    "don't miss":          "explore",
+    "airdrop":             "token distribution",
+    "fast cash":           "quick results",
+    "easy money":          "accessible opportunity",
+    "moon":                "growth potential",
+    "pump":                "market movement",
+    "signal":              "market insight",
+    "crypto signal":       "market analysis",
+    "forex signal":        "currency analysis",
+    "financial freedom":   "financial independence",
+    "passive income":      "recurring value",
+    "secret method":       "proven strategy",
+    "hack":                "smart approach",
+    "unlimited":           "extensive",
+    "100x":                "high-growth",
+}
+
+# ─────────────────────────────────────────────
+# TONE VARIANTS (ensures uniqueness across calls)
+# ─────────────────────────────────────────────
+_TONES = [
+    "professional and direct",
+    "authoritative and concise",
+    "informative and clear",
+    "analytical and precise",
+    "expert and trustworthy",
+]
+
+_COPY_ANGLES = [
+    ("Educational", "Community-Focused", "Value-Driven"),
+    ("Informational", "Trust-Building", "Action-Oriented"),
+    ("Expert", "Engaging", "Results-Focused"),
+    ("Insightful", "Professional", "Growth-Oriented"),
+]
+
+
+# ─────────────────────────────────────────────
+# 1. CHANNEL / GROUP / BOT DEEP ANALYSIS
+# ─────────────────────────────────────────────
+def analyze_channel(
+    name: str,
+    username: str,
+    description: str,
+    member_count,
+    entity_type: str,
+    detected_violations: dict,
+) -> str:
+    subs = f"{member_count:,}" if member_count is not None else "not available"
+    tone = random.choice(_TONES)
+
+    violations_text = ""
+    if detected_violations:
+        for cat, phrases in detected_violations.items():
+            violations_text += f"  - {cat}: {', '.join(str(p) for p in phrases)}\n"
+    else:
+        violations_text = "  No violations detected in available data."
+
+    prompt = f"""
+You are a senior Telegram Ads compliance specialist at AdApprovalPilot AI.
+
+Analyze this Telegram {entity_type} for Telegram Ads policy compliance.
+Use a {tone} tone. This analysis must be unique and specific to this exact channel.
+
+--- CHANNEL DATA ---
+Name: {name}
+Username: @{username}
+Description: {description or "NOT SET — empty description"}
+Subscribers: {subs}
+Detected Policy Signals:
+{violations_text}
+--------------------
+
+Your analysis MUST include:
+
+1. RISK LEVEL: State clearly — HIGH RISK / MEDIUM RISK / LOW RISK
+   Justify with specific data points from above.
+
+2. ROOT CAUSE: Explain in 2-3 sentences exactly WHY ads would be rejected.
+   Be specific to THIS channel. Not generic advice.
+
+3. ISSUES FOUND: List each problem with a brief explanation of WHY it matters for Telegram Ads.
+   If a section is fully compliant, say: "✅ [Section] — No issues detected."
+
+4. PRIORITY FIXES: List 3-5 actions in priority order, most urgent first.
+   Each fix must be specific to the niche of this channel.
+
+5. APPROVAL IMPACT: For each fix, briefly state how it improves approval chances.
+
+Rules:
+- Base ONLY on data provided above
+- Never invent posts or subscribers
+- If description is empty, flag it as a primary rejection risk
+- Use plain, human-like English
+- Do NOT mention Gemini, Claude, or AI anywhere
+- Do NOT use generic advice that could apply to any channel
+- Your output for @{username} must differ from any other channel analysis
+"""
+
+    result = _call_gemini(prompt)
+    if result:
+        return result
+
+    # Rule-based fallback — always produces a useful, specific response
+    return _fallback_channel_analysis(name, username, description, member_count, detected_violations, entity_type)
+
+
+# ─────────────────────────────────────────────
+# 2. ROOT CAUSE DIAGNOSIS
+# ─────────────────────────────────────────────
+def diagnose_rejection(
+    name: str,
+    username: str,
+    description: str,
+    member_count,
+    profile_issues: list,
+    content_violations: dict,
+) -> str:
+    subs  = f"{member_count:,}" if member_count is not None else "unknown"
+    tone  = random.choice(_TONES)
+    p_text = "\n".join(f"  - {i}" for i in profile_issues) if profile_issues else "  None detected"
+    v_text = ""
+    if content_violations:
+        for cat, phrases in content_violations.items():
+            v_text += f"  - {cat}: {', '.join(str(p) for p in phrases)}\n"
+    else:
+        v_text = "  None detected"
+
+    prompt = f"""
+You are AdApprovalPilot AI's head compliance diagnostician.
+Use a {tone} tone. Write a unique rejection diagnosis for @{username}.
+
+--- DATA ---
+Channel: {name} (@{username})
+Subscribers: {subs}
+Description: {description or "NOT SET"}
+Profile Issues:
+{p_text}
+Content Violations:
+{v_text}
+-----------
+
+Write a clear, structured rejection diagnosis:
+
+PRIMARY REJECTION REASON:
+State the single most likely reason ads are being rejected for THIS channel.
+
+CONTRIBUTING FACTORS:
+List secondary issues that compound the primary problem.
+
+HOW THEY COMBINE:
+Explain in 2-3 sentences how these factors together reduce Telegram's approval confidence.
+
+PRIORITY ACTION PLAN:
+List fixes in order of impact. Start with the one that will most improve approval rate.
+
+Tone: Expert compliance consultant speaking directly to a client.
+Be specific to @{username} — not generic advice.
+Do NOT mention Gemini, Claude, or AI.
+"""
+
+    result = _call_gemini(prompt)
+    if result:
+        return result
+
+    return _fallback_diagnosis(name, username, description, member_count, profile_issues, content_violations)
+
+
+# ─────────────────────────────────────────────
+# 3. DESCRIPTION FIXER
+# ─────────────────────────────────────────────
+def fix_description(
+    name: str,
+    username: str,
+    current_description: str,
+    entity_type: str,
+    niche: str = "",
+) -> str:
+    context = niche or current_description or name
+    has_desc = bool(current_description and current_description.strip())
+
+    if has_desc:
+        prompt = f"""
+You are AdApprovalPilot AI's compliance copywriter.
+
+TASK: Minimally rewrite this Telegram {entity_type} description to comply with Telegram Ads policies.
+IMPORTANT: Only fix the non-compliant parts. Preserve as much of the original as possible.
+
+Channel: {name} (@{username})
+Current Description: {current_description}
+Niche Context: {context}
+
+Rules:
+- Maximum 255 characters
+- Only edit phrases that violate policy (spam, hype, guarantees, misleading claims)
+- Keep original language and tone where compliant
+- Do NOT replace compliant sections with generic text
+- If already fully compliant, respond with EXACTLY: COMPLIANT: No changes needed.
+- Do NOT mention Gemini, Claude, or AI
+- Output must be specific to the niche of {name}
+
+Return ONLY the rewritten description. No explanation. No formatting.
+"""
+    else:
+        prompt = f"""
+You are AdApprovalPilot AI's compliance copywriter.
+
+TASK: Write a professional, policy-compliant description for this Telegram {entity_type}.
+The current description is EMPTY — create one from scratch based on the channel name.
+
+Channel: {name} (@{username})
+Niche: {context}
+
+Rules:
+- Maximum 255 characters
+- No spam, no hype, no guarantees, no misleading claims
+- Match the niche of {name} precisely
+- Professional, trustworthy tone
+- Completely unique — not a generic template
+- Do NOT mention Gemini, Claude, or AI
+
+Return ONLY the description text. No explanation. No formatting.
+"""
+
+    result = _call_gemini(prompt)
+    if result:
+        return result
+
+    return _fallback_description(name, username, current_description, entity_type, context)
+
+
+# ─────────────────────────────────────────────
+# 4. NAME FIXER
+# ─────────────────────────────────────────────
+def fix_name(
+    current_name: str,
+    username: str,
+    entity_type: str,
+    issues: list,
+) -> str:
+    issues_text = "\n".join(f"  - {i}" for i in issues) if issues else "  No specific issues"
+
+    prompt = f"""
+You are AdApprovalPilot AI's naming specialist.
+
+Suggest 3 improved names for this Telegram {entity_type}.
+
+Current Name: {current_name}
+Username: @{username}
+Detected Issues:
+{issues_text}
+
+Requirements:
+- Names must comply with Telegram Ads policies
+- Must reflect the ACTUAL niche of @{username} (infer from the username)
+- Professional, trustworthy, not spammy or misleading
+- Each name must be meaningfully different from the others
+- If the current name is already fully compliant, respond with EXACTLY:
+  COMPLIANT: Current name meets policy requirements.
+- Do NOT mention Gemini, Claude, or AI
+
+Format:
+1. [Name] — [one-line reason it works]
+2. [Name] — [one-line reason it works]
+3. [Name] — [one-line reason it works]
+"""
+
+    result = _call_gemini(prompt)
+    if result:
+        return result
+
+    return _fallback_name_fix(current_name, username, entity_type)
+
+
+# ─────────────────────────────────────────────
+# 5. POST REWRITER
+# ─────────────────────────────────────────────
+def rewrite_post(
+    post_text: str,
+    channel_name: str,
+    violation_categories: list,
+) -> str:
+    violations_text = ", ".join(violation_categories) if violation_categories else "general policy concerns"
+
+    prompt = f"""
+You are AdApprovalPilot AI's content compliance editor.
+
+TASK: Minimally rewrite this post to comply with Telegram Ads policies.
+IMPORTANT: Only fix non-compliant phrases. Keep original meaning and language.
+
+Channel: {channel_name}
+Detected Issues: {violations_text}
+
+Original Post:
+{post_text}
+
+Rules:
+- Preserve the original language (Arabic → Arabic, English → English)
+- Only modify the specific phrases that violate policy
+- Do NOT rewrite the entire post if only part is non-compliant
+- Keep the same tone and intent as the original
+- If already fully compliant, respond with EXACTLY:
+  COMPLIANT: This post meets policy requirements.
+- Do NOT mention Gemini, Claude, or AI
+
+Return ONLY the rewritten post. No explanation.
+"""
+
+    result = _call_gemini(prompt)
+    if result:
+        return result
+
+    return _fallback_post_rewrite(post_text, violation_categories)
+
+
+# ─────────────────────────────────────────────
+# 6. AD COPY GENERATOR
+# ─────────────────────────────────────────────
+def generate_ad_copies(
+    name: str,
+    username: str,
+    entity_type: str,
+    description: str = None,
+    niche: str = None,
+) -> str:
+    context = description or niche or f"A Telegram {entity_type} focused on topics related to {name}"
+    angles  = random.choice(_COPY_ANGLES)
+    tone    = random.choice(_TONES)
+
+    prompt = f"""
+You are AdApprovalPilot AI's ad copywriter specializing in Telegram Ads policy compliance.
+
+Generate 3 unique, policy-compliant Telegram ad copies for:
+
+{entity_type.capitalize()} Name: {name}
+Username: @{username}
+Channel Context: {context}
+
+Use a {tone} tone. Write 3 copies with these angles: {angles[0]}, {angles[1]}, {angles[2]}.
+
+Requirements for EACH copy:
+- Fully compliant with Telegram Ads content policies
+- No spam, no guarantees, no hype, no misleading claims
+- Tailored specifically to the niche of @{username}
+- Each copy takes a different angle (see angles above)
+- 1-2 sentences maximum with a natural CTA
+- Must be completely unique to THIS channel
+- Do NOT mention Gemini, Claude, or AI
+
+Format exactly:
+📢 Copy 1 — {angles[0]}:
+[text]
+
+📢 Copy 2 — {angles[1]}:
+[text]
+
+📢 Copy 3 — {angles[2]}:
+[text]
+"""
+
+    result = _call_gemini(prompt)
+    if result:
+        return result
+
+    return _fallback_ad_copies(name, username, entity_type, context, angles)
+
+
+# ─────────────────────────────────────────────
+# 7. TARGET CHANNEL ANALYSIS
+# ─────────────────────────────────────────────
+def analyze_target_channel(
+    name: str,
+    username: str,
+    description: str,
+    member_count,
+    detected_violations: dict,
+) -> str:
+    subs          = f"{member_count:,}" if member_count is not None else "unknown"
+    violations_text = ""
+    if detected_violations:
+        for cat, phrases in detected_violations.items():
+            violations_text += f"  - {cat}: {', '.join(str(p) for p in phrases)}\n"
+    else:
+        violations_text = "  None detected from available data."
+
+    prompt = f"""
+You are AdApprovalPilot AI's ad placement specialist.
+
+Evaluate this Telegram channel as a target for ad placement:
+
+Name: {name} (@{username})
+Subscribers: {subs}
+Description: {description or "NOT SET"}
+Detected Signals:
+{violations_text}
+
+Provide a structured evaluation:
+
+RISK LEVEL: HIGH RISK / MEDIUM RISK / LOW RISK
+[One sentence justification based on data above]
+
+PLACEMENT ISSUES:
+[List specific reasons this channel could cause ad rejection — based ONLY on data provided]
+
+SUITABILITY:
+[State whether this channel is suitable, conditionally suitable, or not suitable for Telegram Ads]
+
+RECOMMENDATIONS:
+[2-3 specific, actionable improvements for this exact channel]
+
+Base assessment ONLY on provided data. Be specific to @{username}.
+Do NOT mention Gemini, Claude, or AI.
+"""
+
+    result = _call_gemini(prompt)
+    if result:
+        return result
+
+    return _fallback_target_analysis(name, username, description, member_count, detected_violations)
+
+
+# ─────────────────────────────────────────────
+# RULE-BASED FALLBACKS
+# Always produce useful, specific output — never fail silently
+# ─────────────────────────────────────────────
+
+def _fallback_channel_analysis(name, username, description, member_count, violations, entity_type) -> str:
+    subs   = member_count or 0
+    issues = []
+    recs   = []
+
+    if subs < 500:
+        issues.append(f"🔴 Very low audience ({subs:,} subscribers) — significantly below Telegram's trust threshold for ad approval")
+        recs.append("Priority 1: Grow to at least 1,000 subscribers before running ads")
+    elif subs < 1000:
+        issues.append(f"🟡 Low subscriber base ({subs:,}) — below the 1,000-subscriber trust minimum for Telegram Ads")
+        recs.append("Priority 1: Grow to 1,000+ subscribers to improve trust score")
+
+    if not description:
+        issues.append("🔴 No description set — empty descriptions are a primary rejection trigger in Telegram's review system")
+        recs.append("Priority 2: Add a clear, niche-specific description immediately")
+    else:
+        for cat, phrases in violations.items():
+            issues.append(f"🟡 Policy signal in description — {cat}: detected phrase(s): `{', '.join(str(p) for p in phrases[:3])}`")
+            recs.append(f"Remove {cat}-related phrases from your description")
+
+    risk = "🔴 HIGH RISK" if len(issues) >= 3 or subs < 500 else (
+           "🟡 MEDIUM RISK" if issues else "🟢 LOW RISK")
+
+    lines = [
+        f"*Risk Level*: {risk}",
+        "",
+        f"*Channel*: {name} (@{username})",
+        f"*Subscribers*: {subs:,}" if member_count else "*Subscribers*: Could not fetch",
+        "",
+        "*Issues Found:*",
+    ]
+    lines += [f"  {i}" for i in issues] if issues else ["  ✅ No major issues detected from available data"]
+    lines += ["", "*Priority Recommendations:*"]
+    lines += [f"  ➡️ {r}" for r in recs] if recs else ["  ✅ Channel appears structurally compliant"]
+
+    return "\n".join(lines)
+
+
+def _fallback_diagnosis(name, username, description, member_count, profile_issues, content_violations) -> str:
+    subs    = member_count or 0
+    primary = []
+    factors = []
+    fixes   = []
+
+    if subs < 1000:
+        primary.append(f"Low subscriber count ({subs:,}) is the primary trust signal failing Telegram's review threshold")
+        fixes.append("1. Grow audience to 1,000+ subscribers immediately")
+    if not description:
+        primary.append("Missing description removes a critical trust signal from the channel profile")
+        fixes.append("2. Add a niche-specific, policy-compliant description")
+    for issue in profile_issues[:2]:
+        factors.append(str(issue))
+    for cat, phrases in content_violations.items():
+        factors.append(f"{cat} signals: {', '.join(str(p) for p in phrases[:2])}")
+        fixes.append(f"3. Remove {cat}-related content from description and posts")
+
+    result  = "*Primary Rejection Reason:*\n"
+    result += "\n".join(f"  • {p}" for p in primary) if primary else "  • Multiple combined signals reducing approval confidence"
+    if factors:
+        result += "\n\n*Contributing Factors:*\n" + "\n".join(f"  • {f}" for f in factors)
+    if fixes:
+        result += "\n\n*Action Plan (in priority order):*\n" + "\n".join(f"  {f}" for f in fixes)
+    result += (
+        "\n\n*Combined Effect:* These factors together signal low quality or policy risk to "
+        "Telegram's automated review system, reducing approval confidence significantly."
+    )
+    return result
+
+
+def _fallback_description(name, username, current_desc, entity_type, context) -> str:
+    base = context.replace("_", " ").strip()
+    base_title = base.title() if len(base) < 30 else name.replace("_", " ").title()
+
+    if entity_type == "channel":
+        templates = [
+            f"{base_title} delivers expert insights and curated content for professionals who want to stay ahead in their field. Follow for reliable, high-quality updates.",
+            f"Stay informed with {base_title} — trusted content, expert analysis, and practical knowledge for a focused audience. Subscribe today.",
+            f"{base_title} is your go-to source for professional content and niche-specific insights. Join a community that values quality and accuracy.",
+        ]
+    elif entity_type == "group":
+        templates = [
+            f"Join {base_title} — a professional community for knowledge exchange, discussion, and growth. Connect with like-minded members in your field.",
+            f"{base_title} brings together professionals for meaningful discussion and real insights. A moderated space for serious learners.",
+            f"Grow your network and knowledge in {base_title}. A community built on quality discussion, mutual support, and professional development.",
+        ]
+    else:
+        templates = [
+            f"{base_title} provides smart, automated tools to boost your productivity inside Telegram. Start now and experience the difference.",
+            f"Simplify your workflow with {base_title}. Fast, reliable, and built for real users who want results without complexity.",
+            f"{base_title} helps you work smarter with intelligent automation. Trusted by users who value efficiency and reliability.",
+        ]
+    return random.choice(templates)
+
+
+def _fallback_name_fix(current_name, username, entity_type) -> str:
+    base = username.lower().replace("_", "").replace("-", "")
+    b    = base.capitalize()
+    if entity_type == "channel":
+        return (
+            f"1. {b}Insights — Clean, niche-specific, positions channel as expert source\n"
+            f"2. {b}Hub — Trustworthy, community-focused, policy-safe\n"
+            f"3. The{b}Channel — Clear, professional, easy to understand"
+        )
+    elif entity_type == "group":
+        return (
+            f"1. {b}Community — Welcoming and clearly describes purpose\n"
+            f"2. {b}Network — Professional tone, niche-relevant\n"
+            f"3. {b}Circle — Modern, approachable, non-spammy"
+        )
+    else:
+        return (
+            f"1. {b}AssistBot — Clear functional purpose, policy-compliant\n"
+            f"2. {b}HelperBot — Simple, trustworthy, easy to remember\n"
+            f"3. {b}ProBot — Professional positioning, Telegram convention compliant"
+        )
+
+
+def _fallback_post_rewrite(post_text, violation_categories) -> str:
+    cleaned = post_text
+    for phrase, safe in REWRITE_MAP.items():
+        cleaned = re.sub(re.escape(phrase), safe, cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'!{2,}', '.', cleaned)
+    cleaned = re.sub(r'\?{2,}', '?', cleaned)
+
+    def fix_caps(m):
+        w = m.group(0)
+        return w.capitalize() if len(w) > 3 else w
+    cleaned = re.sub(r'\b[A-Z]{4,}\b', fix_caps, cleaned)
+    return cleaned.strip()
+
+
+def _fallback_ad_copies(name, username, entity_type, context, angles) -> str:
+    b = name.replace("_", " ").title()
+    if entity_type == "channel":
+        return (
+            f"📢 Copy 1 — {angles[0]}:\n"
+            f"Stay ahead with {b} — expert content trusted by a focused, engaged audience. ➡️ Follow now.\n\n"
+            f"📢 Copy 2 — {angles[1]}:\n"
+            f"Join thousands who rely on {b} for reliable, niche-specific insights. ➡️ Subscribe today.\n\n"
+            f"📢 Copy 3 — {angles[2]}:\n"
+            f"{b} delivers practical knowledge with no filler. Elevate your expertise. ➡️ Follow the channel."
+        )
+    elif entity_type == "group":
+        return (
+            f"📢 Copy 1 — {angles[0]}:\n"
+            f"Connect with professionals in {b} — real discussions, expert opinions, genuine growth. ➡️ Join now.\n\n"
+            f"📢 Copy 2 — {angles[1]}:\n"
+            f"{b} is where serious learners gather to share knowledge and grow together. ➡️ Join the community.\n\n"
+            f"📢 Copy 3 — {angles[2]}:\n"
+            f"A moderated, professional space built for your niche — that's {b}. ➡️ Come and connect."
+        )
+    else:
+        return (
+            f"📢 Copy 1 — {angles[0]}:\n"
+            f"Work smarter with {b} — intelligent automation built right into Telegram. ➡️ Start now.\n\n"
+            f"📢 Copy 2 — {angles[1]}:\n"
+            f"Save time and get results with {b}. Built for users who value efficiency. ➡️ Try it today.\n\n"
+            f"📢 Copy 3 — {angles[2]}:\n"
+            f"{b} is trusted by thousands for reliable, fast, and easy-to-use tools. ➡️ Get started."
+        )
+
+
+def _fallback_target_analysis(name, username, description, member_count, violations) -> str:
+    subs  = member_count or 0
+    flags = []
+    recs  = []
+
+    if subs < 500:
+        flags.append(f"Very low audience ({subs:,} subscribers) — high rejection risk for ad placement")
+        recs.append("Grow channel to 1,000+ subscribers before using as ad target")
+    elif subs < 1000:
+        flags.append(f"Low subscriber count ({subs:,}) — below recommended minimum for reliable ad placement")
+        recs.append("Aim for 5,000+ subscribers for strong ad placement confidence")
+
+    if not description:
+        flags.append("No description — weak profile signal reduces ad approval confidence")
+        recs.append("Add a niche-specific, policy-compliant description")
+
+    for cat, phrases in violations.items():
+        flags.append(f"Policy signal detected — {cat}: {', '.join(str(p) for p in phrases[:2])}")
+        recs.append(f"Remove {cat}-related content before using as ad target")
+
+    risk = "🔴 HIGH RISK" if len(flags) >= 3 or subs < 500 else (
+           "🟡 MEDIUM RISK" if flags else "🟢 LOW RISK")
+
+    result  = f"*Risk Level*: {risk}\n\n"
+    result += "*Placement Issues (based on real data):*\n"
+    result += "\n".join(f"  • {f}" for f in flags) if flags else "  ✅ No major issues detected"
+    result += "\n\n*Suitability:* "
+    if len(flags) >= 3:
+        result += "Not recommended for ad placement until issues are resolved."
+    elif flags:
+        result += "Conditionally suitable — resolve flagged issues first."
+    else:
+        result += "Suitable for ad placement based on available data."
+    if recs:
+        result += "\n\n*Recommendations:*\n" + "\n".join(f"  ➡️ {r}" for r in recs)
+    return result
