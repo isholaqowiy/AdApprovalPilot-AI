@@ -1,6 +1,6 @@
 """
 app.py — AdApprovalPilot AI
-Main bot entry point. Gemini AI integrated throughout.
+Main bot entry point. AdApprovalPilot AI — Full Compliance Engine.
 """
 import os
 import logging
@@ -21,6 +21,7 @@ from ai_engine import (
     generate_ad_copies,
     analyze_target_channel,
     diagnose_rejection,
+    generate_full_optimization,
 )
 from analyzer import (
     fetch_chat_data,
@@ -174,12 +175,16 @@ def main_menu_keyboard():
 def fix_actions_keyboard() -> InlineKeyboardMarkup:
     """Shown after analysis — lets user choose what to fix."""
     return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🚀 Full Optimization Plan",           callback_data="full_optimization")],
         [
-            InlineKeyboardButton("✏️ Fix Description", callback_data="fix_description"),
-            InlineKeyboardButton("📛 Fix Name",         callback_data="fix_name"),
+            InlineKeyboardButton("✏️ Fix Description",               callback_data="fix_description"),
+            InlineKeyboardButton("📛 Fix Name",                      callback_data="fix_name"),
         ],
-        [InlineKeyboardButton("📝 Fix Posts (Admin Required)", callback_data="fix_posts")],
-        [InlineKeyboardButton("⏭ Skip — Back to Menu",         callback_data="skip_fix")],
+        [InlineKeyboardButton("📝 Fix Posts (Requires Admin Access)", callback_data="fix_posts")],
+        [
+            InlineKeyboardButton("📡 Analyse Target Channels",       callback_data="analyse_targets"),
+            InlineKeyboardButton("⏭ Back to Menu",                   callback_data="back_menu"),
+        ],
     ])
 
 def usd_to_ton(usd: float) -> float:
@@ -279,7 +284,7 @@ async def run_deep_analysis(
     link: str,
     entity_type: str,
 ):
-    """Full AI-powered compliance analysis using real Telegram data."""
+    """Full AdApprovalPilot AI compliance analysis using real Telegram data."""
     username = extract_username(link)
     user_id  = update.effective_user.id
 
@@ -320,7 +325,7 @@ async def run_deep_analysis(
         violations,
     )
 
-    # 3. AI deep analysis (unique per channel) — run in executor to avoid blocking
+    # 3. AdApprovalPilot AI deep analysis (unique per channel) — run in executor to avoid blocking
     await update.message.reply_text("🔍 *AdApprovalPilot AI* is analyzing your channel/group/bot...", parse_mode="Markdown")
 
     loop        = asyncio.get_event_loop()
@@ -331,9 +336,11 @@ async def run_deep_analysis(
         member_count       = chat_data["member_count"],
         entity_type        = entity_type,
         detected_violations= violations,
+        has_photo          = chat_data.get("has_photo", False),
+        chat_type          = chat_data.get("chat_type", ""),
     ))
 
-    # 4. AI root cause diagnosis — also run in executor
+    # 4. AdApprovalPilot AI root cause diagnosis — also run in executor
     ai_diagnosis = await loop.run_in_executor(None, lambda: diagnose_rejection(
         name              = chat_data["name"],
         username          = username,
@@ -341,6 +348,7 @@ async def run_deep_analysis(
         member_count      = chat_data["member_count"],
         profile_issues    = [desc for _, desc, _ in profile_issues],
         content_violations= violations,
+        has_photo         = chat_data.get("has_photo", False),
     ))
 
     # 5. Build structured report header (real data)
@@ -376,6 +384,8 @@ async def run_deep_analysis(
         "analysis_entity_type": entity_type,
         "analysis_issues":      profile_issues,
         "analysis_violations":  violations,
+        "analysis_has_photo":   chat_data.get("has_photo", False),
+        "analysis_member_count": chat_data.get("member_count"),
     })
 
     # Send report + fix action buttons
@@ -411,6 +421,51 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ─────────────────────────────────────────────
 # FIX BUTTONS
 # ─────────────────────────────────────────────
+async def full_optimization_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_reply_markup(reply_markup=None)
+
+    data         = context.user_data
+    name         = data.get("analysis_name", "")
+    username     = data.get("analysis_username", "")
+    description  = data.get("analysis_description", "")
+    entity_type  = data.get("analysis_entity_type", "channel")
+    profile_issues = data.get("analysis_issues", [])
+    violations   = data.get("analysis_violations", {})
+    has_photo    = data.get("analysis_has_photo", False)
+    member_count = data.get("analysis_member_count")
+
+    await context.bot.send_message(
+        chat_id=query.from_user.id,
+        text="🚀 *AdApprovalPilot AI* is generating your full optimization plan...",
+        parse_mode="Markdown"
+    )
+
+    loop   = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, lambda: generate_full_optimization(
+        name             = name,
+        username         = username,
+        description      = description,
+        member_count     = member_count,
+        entity_type      = entity_type,
+        detected_violations = violations,
+        has_photo        = has_photo,
+        profile_issues   = [desc for _, desc, _ in profile_issues] if profile_issues and isinstance(profile_issues[0], tuple) else profile_issues,
+    ))
+
+    await context.bot.send_message(
+        chat_id=query.from_user.id,
+        text=(
+            f"🚀 *Full Optimization Plan — @{username}*\n\n"
+            f"{result}\n\n"
+            "📋 Apply all changes above for the highest Telegram Ads approval probability."
+        ),
+        parse_mode="Markdown",
+        reply_markup=main_menu_keyboard()
+    )
+
+
 async def fix_description_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -428,6 +483,8 @@ async def fix_description_handler(update: Update, context: ContextTypes.DEFAULT_
             parse_mode="Markdown"
     )
 
+    violations  = data.get("analysis_violations", {})
+    has_photo   = data.get("analysis_has_photo", False)
     loop   = asyncio.get_event_loop()
     result = await loop.run_in_executor(None, lambda: fix_channel_description(name, username, description, entity_type))
 
@@ -897,8 +954,8 @@ async def ad_text_analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not description:
         await update.message.reply_text(
             "ℹ️ *No description found.*\n\n"
-            "Please describe your channel niche for AI to generate accurate copies.\n\n"
-            "Example: 'Crypto analysis for beginners in Nigeria'",
+            "Please describe your channel niche for AdApprovalPilot AI to generate accurate copies.\n\n"
+            "Example: 'Crypto analysis for beginners worldwide'",
             parse_mode="Markdown"
         )
         context.user_data["ad_username"]    = username
@@ -983,7 +1040,7 @@ async def ad_budget_analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• Days 4–7: Scale best, pause others\n"
         f"• Pause ads with CTR <1% after day 3\n\n"
         f"💡 *Tips:*\n"
-        f"• Start Tier 2 geos (NG, IN, BR) for lower CPM\n"
+        f"• Start with lower-CPM geos for better cost efficiency\n"
         f"• Use channel post as destination\n"
         f"• Set frequency cap: 2 impressions/user/day\n\n"
         f"🪙 ~{TON_PER_USD} TON/USD (verify on CoinGecko)",
@@ -996,7 +1053,7 @@ async def ad_budget_analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # CPM PREDICTOR
 # ─────────────────────────────────────────────
 CPM_TABLE = {
-    "crypto":    (1.5, 3.5, "High",   "Test Tier 2 (IN, NG, BR) to reduce CPM"),
+    "crypto":    (1.5, 3.5, "High",   "Target lower-CPM regions worldwide to reduce cost"),
     "finance":   (1.2, 3.0, "High",   "Narrow interest targeting to control costs"),
     "tech":      (0.8, 2.0, "Medium", "Mix Tier 1 and Tier 2 for balance"),
     "education": (0.5, 1.2, "Low",    "Great niche for tight budgets"),
@@ -1019,7 +1076,7 @@ async def ad_cpm_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📉 *CPM Predictor*\n\n"
         f"What is your niche?\n\n"
         f"Known: `{', '.join(CPM_TABLE.keys())}`\n\n"
-        f"Or describe freely (e.g. 'crypto traders in Nigeria')",
+        f"Or describe freely (e.g. 'crypto traders worldwide')",
         parse_mode="Markdown"
     )
     return WAIT_CPM_NICHE
@@ -1224,11 +1281,12 @@ def register_handlers():
     ptb_app.add_handler(CallbackQueryHandler(apply_fix,              pattern="^applyfix_-?\\d+$"))
     ptb_app.add_handler(CallbackQueryHandler(bot_stay,               pattern="^botstay_-?\\d+$"))
     ptb_app.add_handler(CallbackQueryHandler(bot_leave,              pattern="^botleave_-?\\d+$"))
-    ptb_app.add_handler(CallbackQueryHandler(fix_description_handler,pattern="^fix_description$"))
-    ptb_app.add_handler(CallbackQueryHandler(fix_name_handler,       pattern="^fix_name$"))
-    ptb_app.add_handler(CallbackQueryHandler(fix_posts_handler,      pattern="^fix_posts$"))
-    ptb_app.add_handler(CallbackQueryHandler(skip_fix_handler,       pattern="^skip_fix$"))
-    ptb_app.add_handler(CallbackQueryHandler(back_menu_handler,      pattern="^back_menu$"))
+    ptb_app.add_handler(CallbackQueryHandler(full_optimization_handler, pattern="^full_optimization$"))
+    ptb_app.add_handler(CallbackQueryHandler(fix_description_handler,   pattern="^fix_description$"))
+    ptb_app.add_handler(CallbackQueryHandler(fix_name_handler,          pattern="^fix_name$"))
+    ptb_app.add_handler(CallbackQueryHandler(fix_posts_handler,         pattern="^fix_posts$"))
+    ptb_app.add_handler(CallbackQueryHandler(skip_fix_handler,          pattern="^skip_fix$"))
+    ptb_app.add_handler(CallbackQueryHandler(back_menu_handler,         pattern="^back_menu$"))
 
     # Target channels
     ptb_app.add_handler(ConversationHandler(
